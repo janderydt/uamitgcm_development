@@ -18,6 +18,8 @@ nx = nx_in;    delx = 1;   X = nx*delx;
 ny = ny_in;    dely = 1;   Y = ny*dely;
 nz = 72;     delz = 25;  Z = nz*delz;
 
+rhoConst = 1030;
+
 load griddata.mat
 
 %x axis 
@@ -183,7 +185,10 @@ thick = binread('icethick.bin',8,nx+gx,ny+gy);
 
 for i=1:n_months;
     Hflx(1:nx,1:ny,i) = Hflux(:,:,i).*double(thick(1:nx,1:ny)<=0);
-    Sflx(1:nx,1:ny,i) = Sflux(:,:,i).*double(thick(1:nx,1:ny)<=0);
+
+% oceFWflux is kg/m^2/s DOWN. EXF input is m/s UP.
+
+    Sflx(1:nx,1:ny,i) = (-Sflux(:,:,i)/rhoConst).*double(thick(1:nx,1:ny)<=0);
     taux(1:nx,1:ny,i) = Utau(:,:,i).*double(thick(1:nx,1:ny)<=0);
     tauy(1:nx,1:ny,i) = Vtau(:,:,i).*double(thick(1:nx,1:ny)<=0);
     sst(1:nx,1:ny,i) = SST(:,:,i).*double(thick(1:nx,1:ny)<=0);
