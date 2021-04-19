@@ -5,13 +5,16 @@
 
 import numpy as np
 import csv
+import matplotlib
 from scipy.io import loadmat
 import sys
 import shutil
 import os
+
 # Get mitgcm_python in the path
-sys.path.append('../../UaMITgcm_git/tools/')
-sys.path.append('../../UaMITgcm_git/coupling/')
+sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_git/tools/')
+sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_git/coupling/')
+sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_git/MITgcm_67k/utils/python/MITgcmutils')
 from mitgcm_python.file_io import write_binary
 from mitgcm_python.utils import z_to_xyz, calc_hfac
 from mitgcm_python.make_domain import do_digging, do_zapping
@@ -20,28 +23,25 @@ from set_parameters import Options
 
 # Global parameters
 # These are all things set in the input/data namelist.
-nx = 180    # first part of delX
-dx = 1300   # second part of delX
-ny = 360    # first part of delY
-dy = 1300   # second part of delY
-nz = [50, 10, 6]     # first part of delZ
-dz = [20, 40, 100]   # second part of delZ
+nx = 240    # first part of delX
+dx = 1000   # second part of delX
+ny = 480    # first part of delY
+dy = 1000   # second part of delY
+nz = [80, 10]     # first part of delZ
+dz = [10, 40]   # second part of delZ
 eosType = 'MDJWF'
-#Tref = -1.
-#Sref = 34.2
-#tAlpha = 3.733e-5
-#sBeta = 7.843e-4
 rhoConst = 1024.
 hFacMin = 0.05
 hFacMinDr = 0.
 
 # Some additional stuff about the forcing
-obcs_forcing_data = 'Kimura' # either 'Kimura' or 'Holland'
-constant_forcing = False# False # if set to True, the forcing from options.startDate+options.spinup_time will be taken
+obcs_forcing_data = 'Holland' # either 'Kimura' or 'Holland'
+constant_forcing = False # False # if set to True, the forcing from options.startDate+options.spinup_time will be taken
 
 # read information about startDates, spinup time and simulation time from the options
 options = Options()
 ini_year = int(options.startDate[:4]) # this is the start year and should take the spinup into account
+print(ini_year)
 ini_month = int(options.startDate[4:6]) # this is the start month and should take the spinup into account
 spinup = int(options.spinup_time) # in months
 totaltime = int(options.total_time) # in months
@@ -56,35 +56,12 @@ class OBCSForcingArray:
 
         # assign years and months for forcing
         if constant_forcing:
-            print 'Constant OBCS forcing turned ON'
-            out1 = raw_input('You have chosen constant OBCS forcing. Enter the date code of the first month of the averaging window (eg 199201):').strip()
-            out2 = raw_input('Number of months in the averaging window:').strip()
-	    # make sure input is a valid date
-            valid_date1 = len(out1)==6
-	    valid_date2 = len(out2)==6
-            try:
-                int(valid_date1)
-            except(ValueError):
-                valid_date1 = False
-            if not valid_date1:
-                print 'Error: invalid date code ' + out1
-                sys.exit()
-	    try:
-		int(valid_date2)
-	    except(ValueError):
-		valid_date2 = False
-	    if not valid_date2:
-		print 'Error: invalid window size ' + out1
-		sys.exit()
-            # assign input to array
-            self.years = self.years + int(out1[:4])
-            self.months = self.months + int(out1[4:6]) 
-	    self.window = out2 
+            print 'Constant OBCS forcing turned ON - write some code here to work out the averaging'
+            sys.exit()
         else:
             print 'Time-varying OBCS forcing turned ON'
             self.years = self.years + ini_year + np.floor(np.arange(totaltime)/12)
             self.months = self.months + np.mod(np.arange(totaltime),12) + 1
-
         # assign forcing data
         if obcs_forcing_data == 'Kimura':
             print 'Using Kimura data for obcs conditions'
@@ -206,8 +183,7 @@ class BasicGrid:
 # Calculate the topography and write to binary files.
 def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='none'):
 
-    # Read bathymetry and initial ice shelf draft from Ua
-    # (end of MISMIP experiment)
+    # Read Bedmachine interpolants
     f = loadmat(ua_topo_file)
     bathy = np.transpose(f['B_forMITgcm'])
     draft = np.transpose(f['b_forMITgcm'])
