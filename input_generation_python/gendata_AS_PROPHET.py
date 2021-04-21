@@ -10,11 +10,12 @@ import sys
 import xarray as xr
 import matplotlib.pyplot as plt
 from pyproj import Proj
+import pandas as pd
 
 # Get mitgcm_python in the path
-sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_git/tools/')
-sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_git/coupling/')
-sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_git/MITgcm_67k/utils/python/MITgcmutils')
+sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_source/tools/')
+sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_source/coupling/')
+sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_source/MITgcm_67k/utils/python/MITgcmutils')
 from mitgcm_python.file_io import write_binary
 from mitgcm_python.utils import z_to_xyz, calc_hfac
 from mitgcm_python.make_domain import do_digging, do_zapping
@@ -71,8 +72,8 @@ class ForcingInfo:
             self.BC = loadmat('/Volumes/mainJDeRydt/UaMITgcm_v2/MIT_InputData/Kimura_OceanBC.mat')
         elif forcing_data == 'Holland':
             print 'Using Holland data for restoring and initial conditions. OBCS requires a mat file ' \
-                  ' that contains T, S, U and V at the boundaries. Matlab processing scripts need to be converted' \
-                  ' to Python at some point...'
+                  ' that contains T, S, U and V at the boundaries. Matlab processing scripts for OBCS restoring need to ' \
+                  'be converted to Python at some point...'
             self.Tfile = '/Volumes/mainJDeRydt/Antarctic_datasets/PIG_Thwaites_DotsonCrosson/MITgcm_AS/PHolland_2019/PAS_851/run/stateTheta.nc'
             self.Sfile = '/Volumes/mainJDeRydt/Antarctic_datasets/PIG_Thwaites_DotsonCrosson/MITgcm_AS/PHolland_2019/PAS_851/run/stateSalt.nc'
             self.BC = loadmat('/Volumes/mainJDeRydt/UaMITgcm_v2/MIT_InputData/Holland_OceanBC_PAS_851.mat')
@@ -265,7 +266,7 @@ def make_obcs (grid, forcing, obcs_temp_file_S, obcs_salt_file_S, obcs_uvel_file
     OBW_t, OBW_s, OBW_u, OBW_v = None, None, None, None
 
 # ============================================================================================
-# Creates RBCS for surface
+# Creates RBCS files for surface restoring
 def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, prec):
 
     sizetyx = (totaltime, ny, nx)
@@ -278,40 +279,46 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, prec):
     lon1d = lon2d.ravel()
     lat1d = lat2d.ravel()
 
-    # convert MIT grid to lat and lon for interpolation
+    # convert regional MITgcm grid to lat and lon for interpolation
     p = Proj('+init=EPSG:3031')
     MITx2d, MITy2d = np.meshgrid(grid.x,grid.y)
     MITlon2d, MITlat2d = p(MITx2d, MITy2d, inverse=True)
     MITlon2d = MITlon2d + 360
 
-    k=0
-    RBsurf_t = np.zeros(sizetyx)
+    # Now extract T & S arrays at the surface from the forcing data.
+    # New T & S arrays have dimensions (nt, ny, nx),
+    # The time slices correspond to restoring conditions at the end of each calendar month, averaged over
+    # the preceding month (will be interpolated onto regular interval of 30 days later on - this is required by RBCS)
+    # The horizontal slices are regridded to the local MITgcm grid
+    k=0 # a dummy index
+    RBsurf_t = np.zeros(sizetyx) # define T & S arrays with correct dimensions
     RBsurf_s = np.zeros(sizetyx)
-    RBsurf_time = np.zeros(totaltime)
-    for t in range(forcing.startIndex, forcing.startIndex+totaltime):
-        # slice T and S to surface layer and time t
+    RBsurf_time = np.empty(totaltime-1,dtype='datetime64[ns]') # define time array
+    for t in range(forcing.startIndex, forcing.startIndex+totaltime-1):
+        # slice full T and S arrays to surface layer and time t
         Tsurf_slice = T.isel(DEPTH=slice(1),TIME=t)
-        Ssurf_slice = S.isel(DEPTH=slice(1),TIME=t)
-        Tsurf = Tsurf_slice.THETA.values.ravel()
-        Ssurf = Ssurf_slice.SALT.values.ravel()
-        # eliminate zeros
-        Tsurf = Tsurf[Ssurf != 0]
-        x = lon1d[Ssurf != 0]
-        y = lat1d[Ssurf != 0]
-        Ssurf = Ssurf[Ssurf != 0]
-        # interpolate and allow extrapolation with nearest values
-        t_xx = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
-        t_ss = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='nearest')
-        t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
-        s_xx = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
-        s_ss = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='nearest')
-        s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
-        # assign to full array
-        RBsurf_t[k, :, :] = t_xx
-        RBsurf_s[k, :, :] = s_xx
-        RBsurf_time[k] = Tsurf_slice.TIME
-        print RBsurf_time
-        # print some info
+        # Ssurf_slice = S.isel(DEPTH=slice(1),TIME=t)
+        # Tsurf = Tsurf_slice.THETA.values.ravel()
+        # Ssurf = Ssurf_slice.SALT.values.ravel()
+        # # eliminate zeros as these will lead to unrealistic T & S values during interpolation
+        # Tsurf = Tsurf[Ssurf != 0]
+        # x = lon1d[Ssurf != 0]
+        # y = lat1d[Ssurf != 0]
+        # Ssurf = Ssurf[Ssurf != 0]
+        # # interpolate using linear barycentric interpolation where triangles exist,
+        # # and allow extrapolation with nearest values where triangles do not exist. The latter only occurs in very small
+        # # areas close to the ice front
+        # t_xx = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
+        # t_ss = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='nearest')
+        # t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
+        # s_xx = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
+        # s_ss = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='nearest')
+        # s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
+        # # assign regridded timeslice to full array
+        # RBsurf_t[k, :, :] = t_xx
+        # RBsurf_s[k, :, :] = s_xx
+        RBsurf_time[k] = Tsurf_slice.TIME.values
+        # print some info and step dummy index
         print 'Done ',k+1,' out of ',totaltime
         k=k+1
         #N = 1
@@ -320,13 +327,51 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, prec):
         #plt.show()
         #sys.exit()
 
-    # RBCS has a constant forcing period so we now interpolate RBsurf_t and RBsurf_s
+    # We use RBCS in /Non-cyclic data, multiple files/ mode
+    # RBCS has a constant forcing period so we interpolate RBsurf_t and RBsurf_s
     # linearly to fit equally spaced time intervals
-    dT =
+    # original timeseries and corresponding indices
+    torig = pd.to_datetime(RBsurf_time)
+    df = pd.DataFrame(np.arange(0,totaltime-1),index=torig,columns=list('I'))
+    df = df.resample('D').mean().interpolate('linear')
 
-    # Write the files. No need to take care of mask as MITgcm will do this
-    write_binary(RBsurf_t, rbcs_temp_file, prec)
-    write_binary(RBsurf_s, rbcs_salt_file, prec)
+    teq = df.resample('30D').nearest()
+    Ind = (np.floor(teq['I']), np.ceil(teq['I']))
+    Ind = np.asarray(Ind)
+    Fracs = (Ind[1, :] - teq['I'], teq['I'] - Ind[0, :])
+    Fracs = np.asarray(Fracs)
+    Fracs[(Fracs == 0) & (Ind[0, :] == Ind[1, :])] = 0.5
+
+    # Interpolate to regular intervals
+    for t in range(0,np.size(Ind,1)-1):
+        RBsurf_t_reg = Fracs[0, t] * RBsurf_t[Ind[0, t], :, :] + Fracs[1, t] * RBsurf_t[Ind[1, t], :, :]
+        RBsurf_s_reg = Fracs[0, t] * RBsurf_s[Ind[0, t], :, :] + Fracs[1, t] * RBsurf_s[Ind[1, t], :, :]
+        # generate 3D arrays for T, S and Mask at each time interval
+        np.zeros(sizexyz)
+        # Write binary files for T, S and Mask at each time interval. Filename conventions are
+        # No need to take care of mask as MITgcm will do this.
+        write_binary(RBsurf_t, rbcs_temp_file, prec)
+        write_binary(RBsurf_s, rbcs_salt_file, prec)
+
+    sys.exit()
+
+
+
+
+    # generate array of uniform time intervals of 30 days and indices/fractions for interpolation
+
+
+
+
+    print trbcs
+
+    print Fracs
+    # interpolate surface T & S to uniform time intervals
+
+
+
+
+
 
     # Remove variables from workspace
     RBsurf_t, RBsurf_s = None, None

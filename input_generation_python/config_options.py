@@ -22,7 +22,7 @@ use_xmitgcm = True
 # Optional base directory to simplify definition of directories below
 # This variable won't be read by the coupler, so you don't have to use it.
 #work_dir = '/work/n02/n02/janryd69/UaMITgcm/cases/'+expt_name+'/'
-work_dir = '/Volumes/mainJDeRydt/UaMITgcm_v2/cases/Development/'+expt_name+'/'
+work_dir = '/Volumes/mainJDeRydt/UaMITgcm_v2/cases/UaMITgcm_development/'+expt_name+'/'
 
 ### Path to the MITgcm case directory (containing run/, input/, etc.)
 mit_case_dir = work_dir+'mitgcm_run/'

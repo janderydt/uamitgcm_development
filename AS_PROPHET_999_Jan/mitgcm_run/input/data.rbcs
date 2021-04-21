@@ -1,0 +1,24 @@
+# T&S restoring at the surface
+ &RBCS_PARM01
+ # forcing files are provided at uniform 30 day intervals, e.g. 1955/01/01 00:00, 1955/01/30 00:00 etc
+ rbcsForcingPeriod=2592000,
+ rbcsForcingCycle=0,
+ # place first forcing file at starttime instead of starttime-forcinperiod/2
+ rbcsForcingOffset=1296000,
+ # provide single files for each forcing period to keep file sizes manageable
+ rbcsSingleTimeFiles=TRUE,
+ # deltaT is the same as forcing period
+ deltaTrbcs=2592000,
+ rbcsIter0=0,
+ useRBCtemp=TRUE,
+ useRBCsalt=TRUE,
+ useRBCptracers=FALSE,
+ # set 1 day relaxation timescale at surface
+ tauRelaxT=86400,
+ tauRelaxS=86400,
+ relaxMaskFile(1)='RBsurf_tmask',
+ relaxMaskFile(2)='RBsurf_smask',
+ relaxTFile='RBsurf_t',
+ relaxSFile='RBsurf_s',
+
+ &RBCS_PARM02
