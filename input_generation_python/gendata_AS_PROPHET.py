@@ -4,12 +4,12 @@
 ######################################################
 
 import numpy as np
-import csv
-import matplotlib
 from scipy.io import loadmat
+from scipy import interpolate
 import sys
-import shutil
-import os
+import xarray as xr
+import matplotlib.pyplot as plt
+from pyproj import Proj
 
 # Get mitgcm_python in the path
 sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_git/tools/')
@@ -27,27 +27,26 @@ nx = 240    # first part of delX
 dx = 1000   # second part of delX
 ny = 480    # first part of delY
 dy = 1000   # second part of delY
-nz = [80, 10]     # first part of delZ
-dz = [10, 40]   # second part of delZ
+nz = [80, 10]   # first part of delZ
+dz = [20, 40]   # second part of delZ
 eosType = 'MDJWF'
 rhoConst = 1024.
 hFacMin = 0.05
 hFacMinDr = 0.
 
 # Some additional stuff about the forcing
-obcs_forcing_data = 'Holland' # either 'Kimura' or 'Holland'
+forcing_data = 'Holland' # either 'Kimura' or 'Holland'
 constant_forcing = False # False # if set to True, the forcing from options.startDate+options.spinup_time will be taken
 
 # read information about startDates, spinup time and simulation time from the options
 options = Options()
 ini_year = int(options.startDate[:4]) # this is the start year and should take the spinup into account
-print(ini_year)
 ini_month = int(options.startDate[4:6]) # this is the start month and should take the spinup into account
-spinup = int(options.spinup_time) # in months
 totaltime = int(options.total_time) # in months
 
-# generate array of months/years for OBCS forcing
-class OBCSForcingArray:
+# ============================================================================================
+# gather info on forcing data
+class ForcingInfo:
 
     def __init__ (self):
         # first, initialize variables
@@ -63,89 +62,35 @@ class OBCSForcingArray:
             self.years = self.years + ini_year + np.floor(np.arange(totaltime)/12)
             self.months = self.months + np.mod(np.arange(totaltime),12) + 1
         # assign forcing data
-        if obcs_forcing_data == 'Kimura':
-            print 'Using Kimura data for obcs conditions'
-            self.BC = loadmat('../../MIT_InputData/Kimura_OceanBC.mat')
-        elif obcs_forcing_data == 'Holland':
-            print 'Using Holland data for obcs conditions'
-            self.BC = loadmat('../../MIT_InputData/Holland_OceanBC.mat')
+        if forcing_data == 'Kimura':
+            print 'Using Kimura data for restoring and initial conditions. I do not have the surface data ' \
+                  'so quit here'
+            sys.exit()
+            self.Tfile = ''
+            self.Sfile = ''
+            self.BC = loadmat('/Volumes/mainJDeRydt/UaMITgcm_v2/MIT_InputData/Kimura_OceanBC.mat')
+        elif forcing_data == 'Holland':
+            print 'Using Holland data for restoring and initial conditions. OBCS requires a mat file ' \
+                  ' that contains T, S, U and V at the boundaries. Matlab processing scripts need to be converted' \
+                  ' to Python at some point...'
+            self.Tfile = '/Volumes/mainJDeRydt/Antarctic_datasets/PIG_Thwaites_DotsonCrosson/MITgcm_AS/PHolland_2019/PAS_851/run/stateTheta.nc'
+            self.Sfile = '/Volumes/mainJDeRydt/Antarctic_datasets/PIG_Thwaites_DotsonCrosson/MITgcm_AS/PHolland_2019/PAS_851/run/stateSalt.nc'
+            self.BC = loadmat('/Volumes/mainJDeRydt/UaMITgcm_v2/MIT_InputData/Holland_OceanBC_PAS_851.mat')
         else: 
-            print 'Error: input data for obcs not found'
+            print 'Error: input data for restoring and initial conditions not found'
 
-	# first we isolate the ocean spinup from the forcing dataset
-        BCyears = np.where(self.BC['year'][-1,:]==ini_year)
-        BCmonths = np.where(self.BC['month'][-1,:]==ini_month)
+        BCyears = np.where(self.BC['year'][-1,:] == ini_year)
+        BCmonths = np.where(self.BC['month'][-1,:] == ini_month)
         startIndex = np.int(np.intersect1d(BCyears,BCmonths))
-        Theta_spinup = self.BC['Theta'][:,:,startIndex:startIndex+spinup]
-        Salt_spinup = self.BC['Salt'][:,:,startIndex:startIndex+spinup]
-        Ups_spinup = self.BC['Ups'][:,:,startIndex:startIndex+spinup]
-        Vps_spinup = self.BC['Vps'][:,:,startIndex:startIndex+spinup]
-        year_spinup = self.BC['year'][:,startIndex:startIndex+spinup]
-        month_spinup = self.BC['month'][:,startIndex:startIndex+spinup]
+        self.startIndex = startIndex
+        self.BC['Theta'] = self.BC['Theta'][:,:,startIndex:startIndex+totaltime]
+        self.BC['Salt'] = self.BC['Salt'][:,:,startIndex:startIndex+totaltime]
+        self.BC['Ups'] = self.BC['Ups'][:,:,startIndex:startIndex+totaltime]
+        self.BC['Vps'] = self.BC['Vps'][:,:,startIndex:startIndex+totaltime]
+        self.BC['year'] = self.BC['year'][:,startIndex:startIndex+totaltime]
+        self.BC['month'] = self.BC['month'][:,startIndex:startIndex+totaltime]
 
-        # we then isolate the remaining forcing years for cyclic repetition
-        Theta_cyclic = self.BC['Theta'][:,:,startIndex+spinup:]
-        Salt_cyclic = self.BC['Salt'][:,:,startIndex+spinup:]
-        Ups_cyclic = self.BC['Ups'][:,:,startIndex+spinup:]
-        Vps_cyclic = self.BC['Vps'][:,:,startIndex+spinup:]
-        year_cyclic = self.BC['year'][:,startIndex+spinup:]
-        month_cyclic = self.BC['month'][:,startIndex+spinup:]
-
-        # check to see if year/month is within range of timestamps input data.
-        # if not, then it is assumed that we cycle through input data until the correct year/month is reached
-	ncycles = 0
-	if self.years[-1] >= self.BC['year'][:,-1]:
-            # calculate how many years need adding to the timeseries
-            nyears = np.amax([self.years[-1] - self.BC['year'][:,-1], 0])
-            # calculate how many additional full cycles of the input dataset are required to cover the requested simulation times
-            ncycles = np.int(np.ceil(nyears/(self.BC['year'][:,-1]-self.BC['year'][:,startIndex+spinup])))
-            n=0
-            Theta = np.append(Theta_spinup,Theta_cyclic,axis=2)
-            while n < ncycles:
-                n += 1
-                Theta = np.append(Theta,Theta_cyclic,axis=2)
-            self.BC['Theta'] = Theta
-            Theta = None
-
-            n=0
-            Salt = np.append(Salt_spinup,Salt_cyclic,axis=2)
-            while n < ncycles:
-                n += 1
-                Salt = np.append(Salt,Salt_cyclic,axis=2)
-            self.BC['Salt'] = Salt
-            Salt = None
-
-            n=0
-            Ups = np.append(Ups_spinup,Ups_cyclic,axis=2)
-            while n < ncycles:
-                n += 1
-                Ups = np.append(Ups,Ups_cyclic,axis=2)
-            self.BC['Ups'] = Ups
-            Ups = None
-
-            n=0
-            Vps = np.append(Vps_spinup,Vps_cyclic,axis=2)
-            while n < ncycles:
-                n += 1
-                Vps = np.append(Vps,Vps_cyclic,axis=2)
-            self.BC['Vps'] = Vps
-            Vps = None
-
-        monthstoappend = np.mod(month_cyclic[:,-1]+np.arange(month_cyclic.size*ncycles),12)+1
-        months = np.append(month_spinup,month_cyclic)
-        self.BC['month'] = np.append(months,monthstoappend)
-        yearstoappend = self.BC['year'][:,-1] + np.floor(np.arange(year_cyclic.size*ncycles)/12) +1
-        years = np.append(year_spinup,year_cyclic)
-        self.BC['year'] = np.append(years,yearstoappend)
-
-	print 'Start/end time spinup: ',month_spinup[:,0][:],'/',year_spinup[:,0],' - ',month_spinup[:,-1],'/',year_spinup[:,-1],' (',spinup,' months)'
-	print 'Start/end time cyclic forcing: ',month_cyclic[:,0],'/',year_cyclic[:,0],' - ',month_cyclic[:,-1],'/',year_cyclic[:,-1]
-	print 'Forcing cycles: ',ncycles+1,' cycles of ',month_cyclic.size,' months'
-	print 'Start/end time forcing data: ',self.BC['month'][0],'/',self.BC['year'][0],' - ',self.BC['month'][-1],'/',self.BC['year'][-1]
-	print 'Size T/S/U/V forcing matrix: ',np.shape(self.BC['Theta'])
-	print 'Start/end time run: ',self.months[-1],'/',self.years[-1]
-	print 'Total runtime: ',totaltime,' months'
-
+# ============================================================================================
 # BasicGrid object to hold some information about the grid - just the variables we need to create all the initial conditions, with the same conventions as the mitgcm_python Grid object where needed. This way we can call calc_load_anomaly without needing a full Grid object.
 class BasicGrid:
 
@@ -155,7 +100,7 @@ class BasicGrid:
         for x in xrange(0,len(dz)):
             self.newedges = -np.arange(dz[x],(nz[x]+1)*dz[x],dz[x])
             self.z_edges = np.concatenate((self.z_edges,self.z_edges[-1]+np.array(self.newedges)),axis=None)
-	self.z = 0.5*(self.z_edges[:-1] + self.z_edges[1:])
+        self.z = 0.5*(self.z_edges[:-1] + self.z_edges[1:])
         self.dz = -self.z_edges[1:] + self.z_edges[:-1]
         # Build horizontal grid
         self.x = np.arange(-1.7e6+dx/2,-1.7e6+(nx-1/2)*dx,dx)
@@ -179,18 +124,55 @@ class BasicGrid:
     
 # end BasicGrid object
 
-
+# ============================================================================================
 # Calculate the topography and write to binary files.
 def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='none'):
 
-    # Read Bedmachine interpolants
-    f = loadmat(ua_topo_file)
-    bathy = np.transpose(f['B_forMITgcm'])
-    draft = np.transpose(f['b_forMITgcm'])
-    mask = np.transpose(f['mask_forMITgcm'])
-    # Mask grounded ice out of both fields
-    bathy[mask==0] = 0
-    draft[mask==0] = 0
+    # Read Bedmachine data
+    BM = xr.open_dataset(
+        '/Volumes/mainJDeRydt/Antarctic_datasets/BedMachine_Antarctica/BedMachineAntarctica-2020-07-15.nc')
+    X2d, Y2d = np.meshgrid(BM.x, BM.y)
+
+    # Reduce the size of dataset
+    xmin, xmax, ymin, ymax = np.min(grid.x), np.max(grid.x), np.min(grid.y), np.max(grid.y)
+    xmin = xmin - 1e4  # take a bit more for interpolation
+    xmax = xmax + 1e4
+    ymin = ymin - 1e4
+    ymax = ymax + 1e4
+
+    cond2d = ((X2d >= xmin) & (X2d <= xmax) & (Y2d >= ymin) & (Y2d <= ymax))
+    X1d = X2d[cond2d]
+    Y1d = Y2d[cond2d]
+
+    draft = BM.surface.values - BM.thickness.values
+    bathy = BM.bed.values
+    mask = BM.mask.values # open ocean 0, rock outcrops 1, grounded ice 2, ice shelf 3
+    draft1d = draft[cond2d]
+    bathy1d = bathy[cond2d]
+    mask1d = mask[cond2d]
+
+    # Mask out grounded ice and outcrops in bathy
+    bathy1d[(mask1d == 1) | (mask1d == 2)] = np.nan
+    # Mask out open ocean, grounded ice and outcrops in draft
+    draft1d[(mask1d == 0) | (mask1d == 1) | (mask1d == 2)] = np.nan
+
+    # Interpolate onto MITgcm grid and restore NaN values to zero
+    MITnx, MITny = np.size(grid.x), np.size(grid.y)
+    MITx2d, MITy2d = np.meshgrid(grid.x, grid.y)
+    MITx1d, MITy1d = np.reshape(MITx2d, MITnx * MITny), np.reshape(MITy2d, MITnx * MITny)
+    draft = interpolate.griddata((X1d, Y1d), draft1d, (MITx1d, MITy1d), method='linear',
+                                 fill_value=np.nan)
+    draft[np.isnan(draft)] = 0
+    draft = np.reshape(draft, (MITny, MITnx))
+    bathy =  interpolate.griddata((X1d, Y1d), bathy1d, (MITx1d, MITy1d), method='linear',
+                                 fill_value=np.nan)
+    bathy[np.isnan(bathy)] = 0
+    bathy = np.reshape(bathy, (MITny, MITnx))
+
+    #N=1
+    #plt.pcolor(MITx2d[0:-1:N,0:-1:N],MITy2d[0:-1:N,0:-1:N],draft2d[0:-1:N,0:-1:N])
+    #plt.colorbar()
+    #plt.show()
 
     if dig_option == 'none':
         print 'Not doing digging as per user request'
@@ -202,7 +184,7 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
         draft = do_digging(bathy, draft, grid.dz, grid.z_edges, hFacMin=hFacMin, hFacMinDr=hFacMinDr, dig_option='draft')
 
     print 'Zapping ice shelf drafts which are too thin'
-    draft = do_zapping(draft, draft!=0, grid.dz, grid.z_edges, hFacMinDr=hFacMinDr)[0]        
+    draft = do_zapping(draft, draft!=0, grid.dz, grid.z_edges, hFacMinDr=hFacMinDr)[0]
 
     # Calculate hFacC and save to the grid for later
     grid.save_hfac(bathy, draft)
@@ -211,9 +193,8 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
     write_binary(bathy, bathy_file, prec=prec)
     write_binary(draft, draft_file, prec=prec)
 
-
+# ============================================================================================
 # Returns temperature and salinity profiles, varying with depth, to be used for initial and boundary conditions.
-# Pass option='warm' or 'cold'.
 def ts_profile(x,y,z,obcs):
 
     sizetz = (obcs.nt,np.sum(nz))
@@ -226,18 +207,19 @@ def ts_profile(x,y,z,obcs):
         findtime = np.in1d(obcs.BC['year'],obcs.years[i]) & np.in1d(obcs.BC['month'],obcs.months[i])
         Itime = np.where(findtime)
         Itime = Itime[0][0]
-	t_profile[i,:] = np.interp(-z,-obcs.BC['depth'][:,0],obcs.BC['Theta'][IL,:,Itime])
+        t_profile[i,:] = np.interp(-z,-obcs.BC['depth'][:,0],obcs.BC['Theta'][IL,:,Itime])
         s_profile[i,:] = np.interp(-z,-obcs.BC['depth'][:,0],obcs.BC['Salt'][IL,:,Itime])
         u_profile[i,:] = np.interp(-z,-obcs.BC['depth'][:,0],obcs.BC['Ups'][IL,:,Itime])
         v_profile[i,:] = np.interp(-z,-obcs.BC['depth'][:,0],obcs.BC['Vps'][IL,:,Itime])
 
     return t_profile, s_profile, u_profile, v_profile
 
-# Creates OBCS for the southern/western boundary, and initial conditions for temperature and salinity (cold), using the T/S profiles above. Also calculates the pressure load anomaly.
-def make_ics_obcs (grid, obcs, ini_temp_file, ini_salt_file, obcs_temp_file_S, obcs_salt_file_S, obcs_uvel_file_S, obcs_vvel_file_S, obcs_temp_file_W, obcs_salt_file_W, obcs_uvel_file_W, obcs_vvel_file_W, pload_file, prec):
+# ============================================================================================
+# Creates OBCS for the southern/western boundary
+def make_obcs (grid, forcing, obcs_temp_file_S, obcs_salt_file_S, obcs_uvel_file_S, obcs_vvel_file_S, obcs_temp_file_W, obcs_salt_file_W, obcs_uvel_file_W, obcs_vvel_file_W, prec):
     
-    sizetzx = (obcs.nt,np.sum(nz),nx)
-    sizetzy = (obcs.nt,np.sum(nz),ny)
+    sizetzx = (forcing.nt,np.sum(nz),nx)
+    sizetzy = (forcing.nt,np.sum(nz),ny)
 
     ## Southern boundary
     OBS_t, OBS_s, OBS_u, OBS_v = np.zeros(sizetzx), np.zeros(sizetzx), np.zeros(sizetzx), np.zeros(sizetzx)
@@ -245,7 +227,7 @@ def make_ics_obcs (grid, obcs, ini_temp_file, ini_salt_file, obcs_temp_file_S, o
     for i in xrange(0,nx):
         x = grid.x[i]
         y = grid.y[0]-dy/2
-        t_profile, s_profile, u_profile, v_profile = ts_profile(x,y,grid.z,obcs)
+        t_profile, s_profile, u_profile, v_profile = ts_profile(x,y,grid.z,forcing)
         OBS_t[:,:,i] = t_profile
         OBS_s[:,:,i] = s_profile
         OBS_u[:,:,i] = u_profile
@@ -253,10 +235,10 @@ def make_ics_obcs (grid, obcs, ini_temp_file, ini_salt_file, obcs_temp_file_S, o
 
     # Write the files
     # No need to mask out the land because MITgcm will do that for us
-    write_binary(OBS_t, obcs_temp_file_S, prec=32)
-    write_binary(OBS_s, obcs_salt_file_S, prec=32)
-    write_binary(OBS_u, obcs_uvel_file_S, prec=32)
-    write_binary(OBS_v, obcs_vvel_file_S, prec=32)
+    write_binary(OBS_t, obcs_temp_file_S, prec)
+    write_binary(OBS_s, obcs_salt_file_S, prec)
+    write_binary(OBS_u, obcs_uvel_file_S, prec)
+    write_binary(OBS_v, obcs_vvel_file_S, prec)
 
     # Remove variables from workspace
     OBS_t, OBS_s, OBS_u, OBS_v = None, None, None, None
@@ -267,30 +249,108 @@ def make_ics_obcs (grid, obcs, ini_temp_file, ini_salt_file, obcs_temp_file_S, o
     for i in xrange(0,ny):
         x = grid.x[0]-dx/2
         y = grid.y[i]
-        t_profile, s_profile, u_profile, v_profile = ts_profile(x,y,grid.z,obcs)
+        t_profile, s_profile, u_profile, v_profile = ts_profile(x,y,grid.z,forcing)
         OBW_t[:,:,i] = t_profile
         OBW_s[:,:,i] = s_profile
         OBW_u[:,:,i] = u_profile
         OBW_v[:,:,i] = v_profile
 
     # Write the files
-    write_binary(OBW_t, obcs_temp_file_W, prec=32)
-    write_binary(OBW_s, obcs_salt_file_W, prec=32)
-    write_binary(OBW_u, obcs_uvel_file_W, prec=32)
-    write_binary(OBW_v, obcs_vvel_file_W, prec=32)
+    write_binary(OBW_t, obcs_temp_file_W, prec)
+    write_binary(OBW_s, obcs_salt_file_W, prec)
+    write_binary(OBW_u, obcs_uvel_file_W, prec)
+    write_binary(OBW_v, obcs_vvel_file_W, prec)
 
     # Remove variable from workspace
-    OBW_u, OBW_v = None, None
- 
-    # initial conditions
-    t_profile_av, s_profile_av = np.zeros(np.sum(nz)), np.zeros(np.sum(nz))
-    for i in xrange(0,np.sum(nz)):
-        t_profile_av[i] = np.mean(OBW_t[0,i,:])
-        s_profile_av[i] = np.mean(OBW_s[0,i,:])
+    OBW_t, OBW_s, OBW_u, OBW_v = None, None, None, None
+
+# ============================================================================================
+# Creates RBCS for surface
+def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, prec):
+
+    sizetyx = (totaltime, ny, nx)
+
+    # define forcing data
+    T = xr.open_dataset(forcing.Tfile)
+    S = xr.open_dataset(forcing.Sfile)
+    lon, lat = T.LONGITUDE, T.LATITUDE
+    lon2d, lat2d = np.meshgrid(lon, lat)
+    lon1d = lon2d.ravel()
+    lat1d = lat2d.ravel()
+
+    # convert MIT grid to lat and lon for interpolation
+    p = Proj('+init=EPSG:3031')
+    MITx2d, MITy2d = np.meshgrid(grid.x,grid.y)
+    MITlon2d, MITlat2d = p(MITx2d, MITy2d, inverse=True)
+    MITlon2d = MITlon2d + 360
+
+    k=0
+    RBsurf_t = np.zeros(sizetyx)
+    RBsurf_s = np.zeros(sizetyx)
+    RBsurf_time = np.zeros(totaltime)
+    for t in range(forcing.startIndex, forcing.startIndex+totaltime):
+        # slice T and S to surface layer and time t
+        Tsurf_slice = T.isel(DEPTH=slice(1),TIME=t)
+        Ssurf_slice = S.isel(DEPTH=slice(1),TIME=t)
+        Tsurf = Tsurf_slice.THETA.values.ravel()
+        Ssurf = Ssurf_slice.SALT.values.ravel()
+        # eliminate zeros
+        Tsurf = Tsurf[Ssurf != 0]
+        x = lon1d[Ssurf != 0]
+        y = lat1d[Ssurf != 0]
+        Ssurf = Ssurf[Ssurf != 0]
+        # interpolate and allow extrapolation with nearest values
+        t_xx = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
+        t_ss = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='nearest')
+        t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
+        s_xx = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
+        s_ss = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='nearest')
+        s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
+        # assign to full array
+        RBsurf_t[k, :, :] = t_xx
+        RBsurf_s[k, :, :] = s_xx
+        RBsurf_time[k] = Tsurf_slice.TIME
+        print RBsurf_time
+        # print some info
+        print 'Done ',k+1,' out of ',totaltime
+        k=k+1
+        #N = 1
+        #plt.pcolor(MITx2d[0:-1:N, 0:-1:N], MITy2d[0:-1:N, 0:-1:N], RBsurf_s[k, 0:-1:N, 0:-1:N])
+        #plt.colorbar()
+        #plt.show()
+        #sys.exit()
+
+    # RBCS has a constant forcing period so we now interpolate RBsurf_t and RBsurf_s
+    # linearly to fit equally spaced time intervals
+    dT =
+
+    # Write the files. No need to take care of mask as MITgcm will do this
+    write_binary(RBsurf_t, rbcs_temp_file, prec)
+    write_binary(RBsurf_s, rbcs_salt_file, prec)
+
+    # Remove variables from workspace
+    RBsurf_t, RBsurf_s = None, None
+
+# ============================================================================================
+# Creates initial T & S fields and calculates pressure loading
+def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
+
+
+    T = xr.open_dataset(Tfile,'r')
+    S = xr.open_dataset(Sfile,'r')
+    print T
+    sys.exit()
+    Tsurf = T.sel(time=slice('2015-07-20 00:00', '2015-07-24 23:00'))
+
+
+    # average first 12 months of T_forcing(nx,ny,nz) and S_forcing(nx,ny,nz) and
+    # interpolate onto MITgcm grid
+    time = T.TIME
+
 
     INI_t = z_to_xyz(t_profile_av, [nx, ny])
     INI_s = z_to_xyz(s_profile_av, [nx, ny])
-    
+
     # Write the files
     write_binary(INI_t, ini_temp_file, prec=prec)
     write_binary(INI_s, ini_salt_file, prec=prec)
@@ -299,42 +359,25 @@ def make_ics_obcs (grid, obcs, ini_temp_file, ini_salt_file, obcs_temp_file_S, o
     OBW_t, OBW_s, INI_t, INI_s = None, None, None, None
 
     # Calculate the pressure load anomaly
-    calc_load_anomaly(grid, pload_file, option='precomputed', ini_temp_file=ini_temp_file, ini_salt_file=ini_salt_file, eosType=eosType, rhoConst=rhoConst, prec=prec, check_grid=False)
+    calc_load_anomaly(grid, pload_file, option='precomputed', ini_temp_file=ini_temp_file, ini_salt_file=ini_salt_file,
+                      eosType=eosType, rhoConst=rhoConst, prec=prec, check_grid=False)
+
 
 ############## USER INPUT HERE #########################
-# Path to MITgcm input/ directory for the MISOMIP case
-input_dir = 'mitgcm_run/input/'
+# Path to MITgcm input/ directory
+input_dir = options.mit_case_dir
 
 print 'Building grid'
 grid = BasicGrid()
 
 print 'Reading obcs data'
-obcs = OBCSForcingArray()
+forcing = ForcingInfo()
 
-print 'Creating topography'
-make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
+#print 'Creating topography'
+#make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
-print 'Creating initial and boundary conditions'
-make_ics_obcs(grid, obcs, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', input_dir+'pload.mdjwf', prec=64)
-
-print 'Copy Ua restart file from Ua_InputData'
-with open('/home/n02/n02/janryd69/work/UaMITgcm/Ua_InputData/RunTable.csv', 'rb') as csvfile:
-    runs = csv.reader(csvfile, delimiter=',')
-    for row in runs:
-	if options.expt_name in row[:]:
-	   filename = '/home/n02/n02/janryd69/work/UaMITgcm/Ua_InputData/'+row[0]+'_InverseRestartFile.mat'
-	   if os.path.isfile(filename):
-		shutil.copyfile(filename,'./ua_run/'+options.expt_name+'-RestartFile.mat')
-   		shutil.copyfile(filename,'./ua_custom/'+options.expt_name+'-RestartFile.mat')
-		print 'Copied '+filename
-	   else:
-		print 'Ua restart file '+filename+' not found'
-       		sys.exit()
-		 
-print 'Copy RefinedMesh_for_MITmask.mat to ua_run directory'
-shutil.copyfile('/home/n02/n02/janryd69/work/UaMITgcm/Ua_InputData/RefinedMesh_for_MITmask.mat','./ua_run/RefinedMesh_for_MITmask.mat')
-
-
-
-
+#print 'Creating initial and boundary conditions'
+#make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=32)
+make_rbcs(grid, forcing, input_dir+'RBsurft.bin', input_dir+'RBsurfs.bin', prec=32)
+make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=32)
     

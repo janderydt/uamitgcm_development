@@ -38,7 +38,7 @@ budget_code = 'n02-PROPHET'
 ###### 2. Coupling options ######
 
 ### Total length of simulation (months)
-total_time = 492 # 01/01/1979 - 31/12/2019
+total_time = 780 # 01/01/1955 - 31/12/2019
 ### Length of ocean spinup period (months)
 spinup_time = total_time
 ### Length of coupling timestep (months)
