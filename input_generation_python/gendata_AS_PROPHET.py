@@ -191,6 +191,11 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
     print 'Zapping ice shelf drafts which are too thin'
     draft = do_zapping(draft, draft!=0, grid.dz, grid.z_edges, hFacMinDr=hFacMinDr)[0]
 
+    #N = 1
+    #plt.pcolor(grid.x2d[0:-1:N, 0:-1:N], grid.y2d[0:-1:N, 0:-1:N], draft[0:-1:N, 0:-1:N])
+    #plt.colorbar()
+    #plt.show()
+
     # Calculate hFacC and save to the grid for later
     grid.save_hfac(bathy, draft)
 
@@ -199,7 +204,7 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
     write_binary(draft, draft_file, prec=prec)
 
 # ============================================================================================
-# Returns temperature and salinity profiles, varying with depth, to be used for initial and boundary conditions.
+# Returns temperature and salinity profiles, varying with depth, to be used for OBCS conditions.
 def ts_profile(x,y,z,obcs):
 
     sizetz = (obcs.nt,np.sum(nz))
@@ -207,15 +212,15 @@ def ts_profile(x,y,z,obcs):
 
     L = np.sqrt((x-obcs.BC['x'][:,0])**2+(y-obcs.BC['y'][:,0])**2)
     IL = np.nanargmin(L)
-    
+
     for i in range(0,obcs.nt):    
-        findtime = np.in1d(obcs.BC['year'],obcs.years[i]) & np.in1d(obcs.BC['month'],obcs.months[i])
+        findtime = np.in1d(obcs.BC['year'], obcs.years[i]) & np.in1d(obcs.BC['month'], obcs.months[i])
         Itime = np.where(findtime)
         Itime = Itime[0][0]
-        t_profile[i,:] = np.interp(-z,-obcs.BC['depth'][:,0],obcs.BC['Theta'][IL,:,Itime])
-        s_profile[i,:] = np.interp(-z,-obcs.BC['depth'][:,0],obcs.BC['Salt'][IL,:,Itime])
-        u_profile[i,:] = np.interp(-z,-obcs.BC['depth'][:,0],obcs.BC['Ups'][IL,:,Itime])
-        v_profile[i,:] = np.interp(-z,-obcs.BC['depth'][:,0],obcs.BC['Vps'][IL,:,Itime])
+        t_profile[i,:] = np.interp(-z, -obcs.BC['depth'][:,0], obcs.BC['Theta'][IL,:,Itime])
+        s_profile[i,:] = np.interp(-z, -obcs.BC['depth'][:,0], obcs.BC['Salt'][IL,:,Itime])
+        u_profile[i,:] = np.interp(-z, -obcs.BC['depth'][:,0], obcs.BC['Ups'][IL,:,Itime])
+        v_profile[i,:] = np.interp(-z, -obcs.BC['depth'][:,0], obcs.BC['Vps'][IL,:,Itime])
 
     return t_profile, s_profile, u_profile, v_profile
 
@@ -284,9 +289,6 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
     lon1d = lon2d.ravel()
     lat1d = lat2d.ravel()
 
-    # regional grid in lat and lon for interpolation
-    MITlon2d, MITlat2d = grid.lon2d, grid.lat2d
-
     # Now extract T & S arrays at the surface from the forcing data.
     # New T & S arrays have dimensions (nt, ny, nx),
     # The time slices correspond to restoring conditions at the end of each calendar month, averaged over
@@ -300,34 +302,34 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
         # slice full T and S arrays to surface layer and time t
         Tsurf_slice = T.isel(DEPTH=slice(1),TIME=t)
         Ssurf_slice = S.isel(DEPTH=slice(1),TIME=t)
-        #Tsurf = Tsurf_slice.THETA.values.ravel()
-        #Ssurf = Ssurf_slice.SALT.values.ravel()
+        Tsurf = Tsurf_slice.THETA.values.ravel()
+        Ssurf = Ssurf_slice.SALT.values.ravel()
         # eliminate zeros as these will lead to unrealistic T & S values during interpolation
-        #Tsurf = Tsurf[Ssurf != 0]
-        #x = lon1d[Ssurf != 0]
-        #y = lat1d[Ssurf != 0]
-        #Ssurf = Ssurf[Ssurf != 0]
+        Tsurf = Tsurf[Ssurf != 0]
+        x = lon1d[Ssurf != 0]
+        y = lat1d[Ssurf != 0]
+        Ssurf = Ssurf[Ssurf != 0]
         # interpolate using linear barycentric interpolation where triangles exist,
         # and allow extrapolation with nearest values where triangles do not exist. The latter only occurs in very small
         # areas close to the ice front
-        #t_xx = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
-        #t_ss = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='nearest')
-        #t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
-        #s_xx = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
-        #s_ss = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='nearest')
-        #s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
+        t_xx = interpolate.griddata((x, y), Tsurf, (grid.lon2d, grid.lat2d), method='linear',fill_value=np.nan)
+        t_ss = interpolate.griddata((x, y), Tsurf, (grid.lon2d, grid.lat2d), method='nearest')
+        t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
+        s_xx = interpolate.griddata((x, y), Ssurf, (grid.lon2d, grid.lat2d), method='linear',fill_value=np.nan)
+        s_ss = interpolate.griddata((x, y), Ssurf, (grid.lon2d, grid.lat2d), method='nearest')
+        s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
         # assign regridded timeslice to full array
-        #RBsurf_t_full[k, :, :] = t_xx
-        #RBsurf_s_full[k, :, :] = s_xx
+        RBsurf_t_full[k, :, :] = t_xx
+        RBsurf_s_full[k, :, :] = s_xx
         RBsurf_time[k] = Tsurf_slice.TIME.values
         # print some info and step dummy index
         print 'Done ',k+1,' out of ',totaltime
         k=k+1
         # N = 1
-        # plt.pcolor(MITx2d[0:-1:N, 0:-1:N], MITy2d[0:-1:N, 0:-1:N], RBsurf_s[k, 0:-1:N, 0:-1:N])
-        # plt.colorbar()
-        # plt.show()
-        # sys.exit()
+        #         # plt.pcolor(MITx2d[0:-1:N, 0:-1:N], MITy2d[0:-1:N, 0:-1:N], RBsurf_s[k, 0:-1:N, 0:-1:N])
+        #         # plt.colorbar()
+        #         # plt.show()
+        #         # sys.exit()
 
     # We use RBCS in /Non-cyclic data, multiple files/ mode
     # RBCS has a constant forcing period so we interpolate RBsurf_t and RBsurf_s
@@ -356,8 +358,8 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
         RBsurf_s[0, :, :] = RBsurf_s_reg
         # Write binary files for T, S and Mask at each time interval.
         # No need to take care of mask as MITgcm will do this.
-        write_binary(RBsurf_t, rbcs_temp_file+str(t).zfill(10)+'.data', prec)
-        write_binary(RBsurf_s, rbcs_salt_file+str(t).zfill(10)+'.data', prec)
+        write_binary(RBsurf_t, rbcs_temp_file+'.'+str(t).zfill(10)+'.data', prec)
+        write_binary(RBsurf_s, rbcs_salt_file+'.'+str(t).zfill(10)+'.data', prec)
 
     # Write binary Mask files
     Mask = np.zeros(sizezyx)
@@ -372,13 +374,6 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
 # Creates initial T & S fields and calculates pressure loading
 def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
 
-    # T & S arrays for ICs have dimensions (nz, ny, nx)
-    sizezyx = (grid.nz, grid.ny, grid.nx)
-    ics_T = np.zeros(sizezyx)  # define T & S arrays with correct dimensions
-    ics_S = np.zeros(sizezyx)
-    ics_T_vertinterp = np.zeros((grid.nz, nx * ny))
-    ics_S_vertinterp = np.zeros((grid.nz, nx * ny))
-
     # define forcing data
     T = xr.open_dataset(forcing.Tfile)
     S = xr.open_dataset(forcing.Sfile)
@@ -387,6 +382,13 @@ def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
     lon2d, lat2d = np.meshgrid(lon, lat)
     lon1d = lon2d.ravel()
     lat1d = lat2d.ravel()
+
+    # T & S arrays for ICs have dimensions (nz, ny, nx)
+    sizezyx = (grid.nz, grid.ny, grid.nx)
+    ics_T = np.zeros(sizezyx)  # define T & S arrays with correct dimensions
+    ics_S = np.zeros(sizezyx)
+    ics_T_vertinterp = np.zeros((grid.nz, nx * ny))
+    ics_S_vertinterp = np.zeros((grid.nz, nx * ny))
 
     # Initial T&S conditions are from forcing dataset at time forcing.startIndex
     # slice full T and S arrays to correct time
@@ -411,7 +413,7 @@ def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
     # Now use linear barycentric interpolation for horizontal slices, allowing for
     # extrapolation with nearest values where triangles do not exist
     # First eliminate zeros as these will lead to unrealistic T & S values during interpolation
-    for k in range(0,3):#grid.nz):
+    for k in range(0,grid.nz):
         Tslice = ics_T_vertinterp[k,:]
         Sslice = ics_S_vertinterp[k,:]
         x, y = lon1d, lat1d
@@ -459,7 +461,7 @@ forcing = ForcingInfo()
 make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
 #print 'Creating initial and boundary conditions'
-#make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=32)
-#make_rbcs(grid, forcing, input_dir+'RBsurf_t', input_dir+'RBsurf_s', input_dir+'RBsurf_tmask', input_dir+'RBsurf_smask', prec=32)
-make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=32)
+make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=64)
+make_rbcs(grid, forcing, input_dir+'rbcs_surf_T', input_dir+'rbcs_surf_S', input_dir+'rbcs_mask_T', input_dir+'rbcs_mask_S', prec=64)
+make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=64)
     
