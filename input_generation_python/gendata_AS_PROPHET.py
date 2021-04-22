@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from pyproj import Proj
 import pandas as pd
 
-# Get mitgcm_python in the path
+# Get mitgcm_python in the path and load some functions
 sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_source/tools/')
 sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_source/coupling/')
 sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_source/MITgcm_67k/utils/python/MITgcmutils')
@@ -35,7 +35,7 @@ rhoConst = 1024.
 hFacMin = 0.05
 hFacMinDr = 0.
 
-# Some additional stuff about the forcing
+# Some additional stuff about the forcing data
 forcing_data = 'Holland' # either 'Kimura' or 'Holland'
 constant_forcing = False # False # if set to True, the forcing from options.startDate+options.spinup_time will be taken
 
@@ -106,10 +106,16 @@ class BasicGrid:
         # Build horizontal grid
         self.x = np.arange(-1.7e6+dx/2,-1.7e6+(nx-1/2)*dx,dx)
         self.y = np.arange(-7e5+dy/2,-7e5+(ny-1/2)*dy,dy)
+        self.x2d, self.y2d = np.meshgrid(self.x, self.y)
         # Save grid dimensions
         self.nx = nx
         self.ny = ny
         self.nz = np.sum(nz)
+        # convert regional grid to lat and lon for interpolation
+        p = Proj('+init=EPSG:3031')
+        MITx2d, MITy2d = np.meshgrid(self.x, self.y)
+        self.lon2d, self.lat2d = p(MITx2d, MITy2d, inverse=True)
+        self.lon2d = self.lon2d + 360
 
     # Calculate hFacC given the bathymetry and ice shelf draft.
     # Save to the object.
@@ -158,17 +164,15 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
     draft1d[(mask1d == 0) | (mask1d == 1) | (mask1d == 2)] = np.nan
 
     # Interpolate onto MITgcm grid and restore NaN values to zero
-    MITnx, MITny = np.size(grid.x), np.size(grid.y)
-    MITx2d, MITy2d = np.meshgrid(grid.x, grid.y)
-    MITx1d, MITy1d = np.reshape(MITx2d, MITnx * MITny), np.reshape(MITy2d, MITnx * MITny)
+    MITx1d, MITy1d = np.reshape(grid.x2d, grid.nx * grid.ny), np.reshape(grid.y2d, grid.nx * grid.ny)
     draft = interpolate.griddata((X1d, Y1d), draft1d, (MITx1d, MITy1d), method='linear',
                                  fill_value=np.nan)
     draft[np.isnan(draft)] = 0
-    draft = np.reshape(draft, (MITny, MITnx))
+    draft = np.reshape(draft, (grid.ny, grid.nx))
     bathy =  interpolate.griddata((X1d, Y1d), bathy1d, (MITx1d, MITy1d), method='linear',
                                  fill_value=np.nan)
     bathy[np.isnan(bathy)] = 0
-    bathy = np.reshape(bathy, (MITny, MITnx))
+    bathy = np.reshape(bathy, (grid.ny, grid.nx))
 
     #N=1
     #plt.pcolor(MITx2d[0:-1:N,0:-1:N],MITy2d[0:-1:N,0:-1:N],draft2d[0:-1:N,0:-1:N])
@@ -280,11 +284,8 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
     lon1d = lon2d.ravel()
     lat1d = lat2d.ravel()
 
-    # convert regional MITgcm grid to lat and lon for interpolation
-    p = Proj('+init=EPSG:3031')
-    MITx2d, MITy2d = np.meshgrid(grid.x,grid.y)
-    MITlon2d, MITlat2d = p(MITx2d, MITy2d, inverse=True)
-    MITlon2d = MITlon2d + 360
+    # regional grid in lat and lon for interpolation
+    MITlon2d, MITlat2d = grid.lon2d, grid.lat2d
 
     # Now extract T & S arrays at the surface from the forcing data.
     # New T & S arrays have dimensions (nt, ny, nx),
@@ -295,38 +296,38 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
     RBsurf_t_full = np.zeros(sizetyx) # define T & S arrays with correct dimensions
     RBsurf_s_full = np.zeros(sizetyx)
     RBsurf_time = np.empty(totaltime-1,dtype='datetime64[ns]') # define time array
-    for t in range(forcing.startIndex, forcing.startIndex+3):#totaltime-1):
+    for t in range(forcing.startIndex, forcing.startIndex+totaltime-1):
         # slice full T and S arrays to surface layer and time t
         Tsurf_slice = T.isel(DEPTH=slice(1),TIME=t)
         Ssurf_slice = S.isel(DEPTH=slice(1),TIME=t)
-        Tsurf = Tsurf_slice.THETA.values.ravel()
-        Ssurf = Ssurf_slice.SALT.values.ravel()
+        #Tsurf = Tsurf_slice.THETA.values.ravel()
+        #Ssurf = Ssurf_slice.SALT.values.ravel()
         # eliminate zeros as these will lead to unrealistic T & S values during interpolation
-        Tsurf = Tsurf[Ssurf != 0]
-        x = lon1d[Ssurf != 0]
-        y = lat1d[Ssurf != 0]
-        Ssurf = Ssurf[Ssurf != 0]
+        #Tsurf = Tsurf[Ssurf != 0]
+        #x = lon1d[Ssurf != 0]
+        #y = lat1d[Ssurf != 0]
+        #Ssurf = Ssurf[Ssurf != 0]
         # interpolate using linear barycentric interpolation where triangles exist,
         # and allow extrapolation with nearest values where triangles do not exist. The latter only occurs in very small
         # areas close to the ice front
-        t_xx = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
-        t_ss = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='nearest')
-        t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
-        s_xx = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
-        s_ss = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='nearest')
-        s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
+        #t_xx = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
+        #t_ss = interpolate.griddata((x, y), Tsurf, (MITlon2d, MITlat2d), method='nearest')
+        #t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
+        #s_xx = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='linear',fill_value=np.nan)
+        #s_ss = interpolate.griddata((x, y), Ssurf, (MITlon2d, MITlat2d), method='nearest')
+        #s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
         # assign regridded timeslice to full array
-        RBsurf_t_full[k, :, :] = t_xx
-        RBsurf_s_full[k, :, :] = s_xx
+        #RBsurf_t_full[k, :, :] = t_xx
+        #RBsurf_s_full[k, :, :] = s_xx
         RBsurf_time[k] = Tsurf_slice.TIME.values
         # print some info and step dummy index
         print 'Done ',k+1,' out of ',totaltime
         k=k+1
-        #N = 1
-        #plt.pcolor(MITx2d[0:-1:N, 0:-1:N], MITy2d[0:-1:N, 0:-1:N], RBsurf_s[k, 0:-1:N, 0:-1:N])
-        #plt.colorbar()
-        #plt.show()
-        #sys.exit()
+        # N = 1
+        # plt.pcolor(MITx2d[0:-1:N, 0:-1:N], MITy2d[0:-1:N, 0:-1:N], RBsurf_s[k, 0:-1:N, 0:-1:N])
+        # plt.colorbar()
+        # plt.show()
+        # sys.exit()
 
     # We use RBCS in /Non-cyclic data, multiple files/ mode
     # RBCS has a constant forcing period so we interpolate RBsurf_t and RBsurf_s
@@ -335,31 +336,28 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
     torig = pd.to_datetime(RBsurf_time)
     df = pd.DataFrame(np.arange(0,totaltime-1),index=torig,columns=list('I'))
     df = df.resample('D').mean().interpolate('linear')
-
     teq = df.resample('30D').nearest()
+
     Ind = (np.floor(teq['I']), np.ceil(teq['I']))
     Ind = np.asarray(Ind)
     Fracs = (Ind[1, :] - teq['I'], teq['I'] - Ind[0, :])
     Fracs = np.asarray(Fracs)
     Fracs[(Fracs == 0) & (Ind[0, :] == Ind[1, :])] = 0.5
-    Ind=Ind.astype('int')
+    Ind = Ind.astype('int')
 
     # Interpolate to regular intervals
-    for t in range(0,np.size(Ind,1)-1):
-        print t
-        print Ind[0, t]
-        print Ind[1, t]
+    for t in range(0,np.size(Ind,1)):
+        RBsurf_t = np.zeros(sizezyx)
+        RBsurf_s = np.zeros(sizezyx)
         RBsurf_t_reg = Fracs[0, t] * RBsurf_t_full[Ind[0, t], :, :] + Fracs[1, t] * RBsurf_t_full[Ind[1, t], :, :]
         RBsurf_s_reg = Fracs[0, t] * RBsurf_s_full[Ind[0, t], :, :] + Fracs[1, t] * RBsurf_s_full[Ind[1, t], :, :]
         # generate 3D arrays for T, S at each time interval
-        RBsurf_t = np.zeros(sizezyx)
-        RBsurf_s = np.zeros(sizezyx)
-        RBsurf_t[0, :, c:] = RBsurf_t_reg
+        RBsurf_t[0, :, :] = RBsurf_t_reg
         RBsurf_s[0, :, :] = RBsurf_s_reg
-        # Write binary files for T, S and Mask at each time interval. Filename conventions are
+        # Write binary files for T, S and Mask at each time interval.
         # No need to take care of mask as MITgcm will do this.
-        write_binary(RBsurf_t, rbcs_temp_file+'.'+str(t).zfill(10)+'.data', prec)
-        write_binary(RBsurf_s, rbcs_salt_file+'.'+str(t).zfill(10)+'.data', prec)
+        write_binary(RBsurf_t, rbcs_temp_file+str(t).zfill(10)+'.data', prec)
+        write_binary(RBsurf_s, rbcs_salt_file+str(t).zfill(10)+'.data', prec)
 
     # Write binary Mask files
     Mask = np.zeros(sizezyx)
@@ -374,28 +372,73 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
 # Creates initial T & S fields and calculates pressure loading
 def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
 
+    # T & S arrays for ICs have dimensions (nz, ny, nx)
+    sizezyx = (grid.nz, grid.ny, grid.nx)
+    ics_T = np.zeros(sizezyx)  # define T & S arrays with correct dimensions
+    ics_S = np.zeros(sizezyx)
+    ics_T_vertinterp = np.zeros((grid.nz, nx * ny))
+    ics_S_vertinterp = np.zeros((grid.nz, nx * ny))
 
-    T = xr.open_dataset(Tfile,'r')
-    S = xr.open_dataset(Sfile,'r')
-    print T
-    sys.exit()
-    Tsurf = T.sel(time=slice('2015-07-20 00:00', '2015-07-24 23:00'))
+    # define forcing data
+    T = xr.open_dataset(forcing.Tfile)
+    S = xr.open_dataset(forcing.Sfile)
+    lon, lat, z = T.LONGITUDE, T.LATITUDE, T.DEPTH
+    nx, ny, nz = lon.shape[0], lat.shape[0], z.shape[0]
+    lon2d, lat2d = np.meshgrid(lon, lat)
+    lon1d = lon2d.ravel()
+    lat1d = lat2d.ravel()
 
+    # Initial T&S conditions are from forcing dataset at time forcing.startIndex
+    # slice full T and S arrays to correct time
+    ics_Tslice = T.isel(TIME=forcing.startIndex).THETA.values
+    ics_Sslice = S.isel(TIME=forcing.startIndex).SALT.values
 
-    # average first 12 months of T_forcing(nx,ny,nz) and S_forcing(nx,ny,nz) and
-    # interpolate onto MITgcm grid
-    time = T.TIME
+    # linearly interpolate vertical levels first
+    FI = interpolate.interp1d(z,np.arange(0,nz),kind='linear')
+    I = FI(-grid.z)
+    Ind = (np.floor(I), np.ceil(I))
+    Ind = np.asarray(Ind)
+    Fracs = (Ind[1, :] - I, I - Ind[0, :])
+    Fracs = np.asarray(Fracs)
+    Fracs[(Fracs == 0) & (Ind[0, :] == Ind[1, :])] = 0.5
+    Ind = Ind.astype('int')
+    ics_Tslice = np.reshape(ics_Tslice, (nz, nx * ny))
+    ics_Sslice = np.reshape(ics_Sslice, (nz, nx * ny))
+    for t in range(0, np.size(Ind, 1)):
+        ics_T_vertinterp[t, :] = Fracs[0, t] * ics_Tslice[Ind[0, t], :] + Fracs[1, t] * ics_Tslice[Ind[1, t], :]
+        ics_S_vertinterp[t, :] = Fracs[0, t] * ics_Sslice[Ind[0, t], :] + Fracs[1, t] * ics_Sslice[Ind[1, t], :]
 
+    # Now use linear barycentric interpolation for horizontal slices, allowing for
+    # extrapolation with nearest values where triangles do not exist
+    # First eliminate zeros as these will lead to unrealistic T & S values during interpolation
+    for k in range(0,3):#grid.nz):
+        Tslice = ics_T_vertinterp[k,:]
+        Sslice = ics_S_vertinterp[k,:]
+        x, y = lon1d, lat1d
+        Tslice = Tslice[Sslice != 0]
+        x = x[Sslice != 0]
+        y = y[Sslice != 0]
+        Sslice = Sslice[Sslice != 0]
+        t_xx = interpolate.griddata((x, y), Tslice, (grid.lon2d, grid.lat2d), method='linear',fill_value=np.nan)
+        t_ss = interpolate.griddata((x, y), Tslice, (grid.lon2d, grid.lat2d), method='nearest')
+        t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
+        s_xx = interpolate.griddata((x, y), Sslice, (grid.lon2d, grid.lat2d), method='linear',fill_value=np.nan)
+        s_ss = interpolate.griddata((x, y), Sslice, (grid.lon2d, grid.lat2d), method='nearest')
+        s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
+        # assign regridded horizontal slice to full array
+        ics_T[k,:,:] = t_xx
+        ics_S[k,:,:] = s_xx
+        # print some info and step dummy index
+        print 'Done ', k + 1, ' out of ', grid.nz
+        #N = 1
+        #plt.pcolor(grid.x2d[0:-1:N, 0:-1:N], grid.y2d[0:-1:N, 0:-1:N], ics_T[k, 0:-1:N, 0:-1:N])
+        #plt.colorbar()
+        #plt.show()
+        #sys.exit()
 
-    INI_t = z_to_xyz(t_profile_av, [nx, ny])
-    INI_s = z_to_xyz(s_profile_av, [nx, ny])
-
-    # Write the files
-    write_binary(INI_t, ini_temp_file, prec=prec)
-    write_binary(INI_s, ini_salt_file, prec=prec)
-
-    # Remove variables from workspace
-    OBW_t, OBW_s, INI_t, INI_s = None, None, None, None
+    # Write the files. Don't worry about masking ice and bedrock cells, as MITgcm takes care of this
+    write_binary(ics_T, ini_temp_file, prec=prec)
+    write_binary(ics_S, ini_salt_file, prec=prec)
 
     # Calculate the pressure load anomaly
     calc_load_anomaly(grid, pload_file, option='precomputed', ini_temp_file=ini_temp_file, ini_salt_file=ini_salt_file,
@@ -413,10 +456,10 @@ print 'Reading obcs data'
 forcing = ForcingInfo()
 
 #print 'Creating topography'
-#make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
+make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
 #print 'Creating initial and boundary conditions'
 #make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=32)
-make_rbcs(grid, forcing, input_dir+'RBsurf_t', input_dir+'RBsurf_s', input_dir+'RBsurf_tmask', input_dir+'RBsurf_smask', prec=32)
-#make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=32)
+#make_rbcs(grid, forcing, input_dir+'RBsurf_t', input_dir+'RBsurf_s', input_dir+'RBsurf_tmask', input_dir+'RBsurf_smask', prec=32)
+make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=32)
     
