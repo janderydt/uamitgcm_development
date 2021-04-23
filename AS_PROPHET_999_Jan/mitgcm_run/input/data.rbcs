@@ -16,9 +16,9 @@
 # set 1 day relaxation timescale at surface
  tauRelaxT=86400,
  tauRelaxS=86400,
- relaxMaskFile='rbcs_mask_T','rbcs_mask_S',
- relaxTFile='rbcs_surf_T.bin',
- relaxSFile='rbcs_surf_S.bin',
+ relaxMaskFile='rbcs_mask_T.bin','rbcs_mask_S.bin',
+ relaxTFile='rbcs_surf_T',
+ relaxSFile='rbcs_surf_S',
  &
 
  &RBCS_PARM02
