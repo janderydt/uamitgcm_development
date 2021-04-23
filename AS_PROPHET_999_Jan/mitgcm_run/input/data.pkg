@@ -1,8 +1,9 @@
 # Packages
  &PACKAGES
- useDiagnostics = .TRUE., 
+ useDiagnostics=.TRUE.,
  useShelfIce=.true.,
  useOBCS=.true.,
+ useRBCS=.true.,
  useKPP=.true.,
  usePP81=.false.,
  useMY82=.false.,

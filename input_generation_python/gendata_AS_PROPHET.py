@@ -461,7 +461,7 @@ forcing = ForcingInfo()
 make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
 #print 'Creating initial and boundary conditions'
-make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=64)
-make_rbcs(grid, forcing, input_dir+'rbcs_surf_T', input_dir+'rbcs_surf_S', input_dir+'rbcs_mask_T', input_dir+'rbcs_mask_S', prec=64)
+#make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=64)
+#make_rbcs(grid, forcing, input_dir+'rbcs_surf_T', input_dir+'rbcs_surf_S', input_dir+'rbcs_mask_T', input_dir+'rbcs_mask_S', prec=64)
 make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=64)
     
