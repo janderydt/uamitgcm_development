@@ -105,7 +105,9 @@ class BasicGrid:
         self.dz = -self.z_edges[1:] + self.z_edges[:-1]
         # Build horizontal grid
         self.x = np.arange(-1.7e6+dx/2,-1.7e6+(nx-1/2)*dx,dx)
+        self.dx = dx
         self.y = np.arange(-7e5+dy/2,-7e5+(ny-1/2)*dy,dy)
+        self.dy = dy
         self.x2d, self.y2d = np.meshgrid(self.x, self.y)
         # Save grid dimensions
         self.nx = nx
@@ -207,7 +209,7 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
 # Returns temperature and salinity profiles, varying with depth, to be used for OBCS conditions.
 def ts_profile(x,y,z,obcs):
 
-    sizetz = (obcs.nt,np.sum(nz))
+    sizetz = (obcs.nt,np.shape(z)[0])
     t_profile, s_profile, u_profile, v_profile = np.zeros(sizetz), np.zeros(sizetz), np.zeros(sizetz), np.zeros(sizetz)
 
     L = np.sqrt((x-obcs.BC['x'][:,0])**2+(y-obcs.BC['y'][:,0])**2)
@@ -228,15 +230,15 @@ def ts_profile(x,y,z,obcs):
 # Creates OBCS for the southern/western boundary
 def make_obcs (grid, forcing, obcs_temp_file_S, obcs_salt_file_S, obcs_uvel_file_S, obcs_vvel_file_S, obcs_temp_file_W, obcs_salt_file_W, obcs_uvel_file_W, obcs_vvel_file_W, prec):
     
-    sizetzx = (forcing.nt,np.sum(nz),nx)
-    sizetzy = (forcing.nt,np.sum(nz),ny)
+    sizetzx = (forcing.nt,grid.nz,grid.nx)
+    sizetzy = (forcing.nt,grid.nz,grid.ny)
 
     ## Southern boundary
     OBS_t, OBS_s, OBS_u, OBS_v = np.zeros(sizetzx), np.zeros(sizetzx), np.zeros(sizetzx), np.zeros(sizetzx)
     
-    for i in xrange(0,nx):
+    for i in xrange(0,grid.nx):
         x = grid.x[i]
-        y = grid.y[0]-dy/2
+        y = grid.y[0]-grid.dy/2
         t_profile, s_profile, u_profile, v_profile = ts_profile(x,y,grid.z,forcing)
         OBS_t[:,:,i] = t_profile
         OBS_s[:,:,i] = s_profile
@@ -256,8 +258,8 @@ def make_obcs (grid, forcing, obcs_temp_file_S, obcs_salt_file_S, obcs_uvel_file
     ## Western boundary
     OBW_t, OBW_s, OBW_u, OBW_v = np.zeros(sizetzy), np.zeros(sizetzy), np.zeros(sizetzy), np.zeros(sizetzy)
     
-    for i in xrange(0,ny):
-        x = grid.x[0]-dx/2
+    for i in xrange(0,grid.ny):
+        x = grid.x[0]-grid.dx/2
         y = grid.y[i]
         t_profile, s_profile, u_profile, v_profile = ts_profile(x,y,grid.z,forcing)
         OBW_t[:,:,i] = t_profile
@@ -458,10 +460,10 @@ print 'Reading obcs data'
 forcing = ForcingInfo()
 
 #print 'Creating topography'
-make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
+#make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
 #print 'Creating initial and boundary conditions'
-#make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=64)
+make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=64)
 #make_rbcs(grid, forcing, input_dir+'rbcs_surf_T', input_dir+'rbcs_surf_S', input_dir+'rbcs_mask_T', input_dir+'rbcs_mask_S', prec=64)
-make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=64)
+#make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=64)
     
