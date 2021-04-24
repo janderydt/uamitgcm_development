@@ -167,19 +167,15 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
 
     # Interpolate onto MITgcm grid and restore NaN values to zero
     MITx1d, MITy1d = np.reshape(grid.x2d, grid.nx * grid.ny), np.reshape(grid.y2d, grid.nx * grid.ny)
-    draft = interpolate.griddata((X1d, Y1d), draft1d, (MITx1d, MITy1d), method='linear',
+    draft = interpolate.griddata((Y1d, X1d), draft1d, (MITy1d, MITx1d), method='linear',
                                  fill_value=np.nan)
     draft[np.isnan(draft)] = 0
     draft = np.reshape(draft, (grid.ny, grid.nx))
-    bathy =  interpolate.griddata((X1d, Y1d), bathy1d, (MITx1d, MITy1d), method='linear',
+
+    bathy =  interpolate.griddata((Y1d, X1d), bathy1d, (MITy1d, MITx1d), method='linear',
                                  fill_value=np.nan)
     bathy[np.isnan(bathy)] = 0
     bathy = np.reshape(bathy, (grid.ny, grid.nx))
-
-    #N=1
-    #plt.pcolor(MITx2d[0:-1:N,0:-1:N],MITy2d[0:-1:N,0:-1:N],draft2d[0:-1:N,0:-1:N])
-    #plt.colorbar()
-    #plt.show()
 
     if dig_option == 'none':
         print 'Not doing digging as per user request'
@@ -193,10 +189,10 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
     print 'Zapping ice shelf drafts which are too thin'
     draft = do_zapping(draft, draft!=0, grid.dz, grid.z_edges, hFacMinDr=hFacMinDr)[0]
 
-    #N = 1
-    #plt.pcolor(grid.x2d[0:-1:N, 0:-1:N], grid.y2d[0:-1:N, 0:-1:N], draft[0:-1:N, 0:-1:N])
-    #plt.colorbar()
-    #plt.show()
+    N = 1
+    plt.pcolor(grid.x2d[0:-1:N, 0:-1:N], grid.y2d[0:-1:N, 0:-1:N], draft[0:-1:N, 0:-1:N]-bathy[0:-1:N, 0:-1:N])
+    plt.colorbar()
+    plt.show()
 
     # Calculate hFacC and save to the grid for later
     grid.save_hfac(bathy, draft)
@@ -460,10 +456,10 @@ print 'Reading obcs data'
 forcing = ForcingInfo()
 
 #print 'Creating topography'
-#make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
+make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
 #print 'Creating initial and boundary conditions'
 make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=64)
 #make_rbcs(grid, forcing, input_dir+'rbcs_surf_T', input_dir+'rbcs_surf_S', input_dir+'rbcs_mask_T', input_dir+'rbcs_mask_S', prec=64)
-#make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=64)
+make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=64)
     

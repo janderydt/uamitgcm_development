@@ -4,8 +4,7 @@
 #SBATCH --tasks-per-node=128
 #SBATCH --cpus-per-task=1
 #SBATCH --partition=standard
-#SBATCH --qos=short
-#SBATCH --reservation=shortqos
+#SBATCH --qos=standard
 ####################################################################
 # Run MITgcm.
 # Must pass the arguments
@@ -13,6 +12,10 @@
 # and
 # -A <Archer budget>
 ####################################################################
+
+# for debugging purposes, it might be faster to use the short queue, in which case
+# SBATCH --qos=short
+# SBATCH --reservation=shortqos
 
 # Setup the job environment (this module needs to be loaded before any other modules)
 module load epcc-job-env
