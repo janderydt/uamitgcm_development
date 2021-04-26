@@ -13,6 +13,7 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from pyproj import Proj
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 
 # Get mitgcm_python in the path and load some functions
 sys.path.append('/Volumes/mainJDeRydt/UaMITgcm_v2/UaMITgcm_source/tools/')
@@ -45,9 +46,9 @@ constant_forcing = False # False # if set to True, the forcing from options.star
 
 # read information about startDates, spinup time and simulation time from the options
 options = Options()
-ini_year = int(options.startDate[:4]) # this is the start year and should take the spinup into account
-ini_month = int(options.startDate[4:6]) # this is the start month and should take the spinup into account
-totaltime = int(options.total_time) # in months
+ini_year = str(options.startDate[:4]) # this is the start year and should take the spinup into account
+ini_month = str(options.startDate[4:6]) # this is the start month and should take the spinup into account
+starttime = np.datetime64(ini_year+'-'+ini_month+'-01')
 
 # ============================================================================================
 # gather info on forcing data
@@ -80,18 +81,6 @@ class ForcingInfo:
             #self.BC = loadmat('/Volumes/mainJDeRydt/UaMITgcm_v2/MIT_InputData/Holland_OceanBC_PAS_851.mat')
         else: 
             print 'Error: input data for restoring and initial conditions not found'
-
-        BCyears = np.where(self.BC['year'][-1,:] == ini_year)
-        BCmonths = np.where(self.BC['month'][-1,:] == ini_month)
-        startIndex = np.int(np.intersect1d(BCyears,BCmonths))
-        self.startIndex = startIndex
-        print startIndex
-        sys.exit()
-        # self.BC['Theta'] = self.BC['Theta'][:,:,startIndex:-1]
-        # self.BC['Salt'] = self.BC['Salt'][:,:,startIndex:-1]
-        # self.BC['Ups'] = self.BC['Ups'][:,:,startIndex:-1]
-        # self.BC['Vps'] = self.BC['Vps'][:,:,startIndex:-1]
-        # self.BC['time'] = self.BC['time'][:,startIndex:-1]
 
 # ============================================================================================
 # BasicGrid object to hold some information about the grid - just the variables we need to create all the initial conditions, with the same conventions as the mitgcm_python Grid object where needed. This way we can call calc_load_anomaly without needing a full Grid object.
@@ -469,7 +458,7 @@ def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
     # define forcing data
     T = xr.open_dataset(forcing.Tfile)
     S = xr.open_dataset(forcing.Sfile)
-    lon, lat, z = T.LONGITUDE, T.LATITUDE, T.DEPTH
+    lon, lat, z, time = T.LONGITUDE, T.LATITUDE, T.DEPTH, T.TIME
     nx, ny, nz = lon.shape[0], lat.shape[0], z.shape[0]
     lon2d, lat2d = np.meshgrid(lon, lat)
     lon1d = lon2d.ravel()
@@ -482,14 +471,20 @@ def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
     ics_T_vertinterp = np.zeros((grid.nz, nx * ny))
     ics_S_vertinterp = np.zeros((grid.nz, nx * ny))
 
-    # Initial T&S conditions are from forcing dataset at time forcing.startIndex
+    # Initial T&S conditions are from forcing dataset at time 'starttime'
     # slice full T and S arrays to correct time
-    ics_Tslice = T.isel(TIME=forcing.startIndex).THETA.values
-    ics_Sslice = S.isel(TIME=forcing.startIndex).SALT.values
+    starttime_pd = pd.to_datetime(starttime, format = '%Y-%m-%d')
+    starttime_pd = starttime_pd + relativedelta(months=+1) #shift starttime to first day of next month to correspond to time
+                                                    #conventions in forcing data
+    forcingtime_pd = pd.to_datetime(time.TIME.values, format = '%Y-%m-%d')
+    startIndex = np.where(starttime_pd == forcingtime_pd)[0] # find index of starttime within time array of forcing data
+
+    ics_Tslice = T.isel(TIME=startIndex).THETA.values
+    ics_Sslice = S.isel(TIME=startIndex).SALT.values
     ics_Tslice = np.reshape(ics_Tslice, (nz, nx * ny))
     ics_Sslice = np.reshape(ics_Sslice, (nz, nx * ny))
 
-    (Ind,Fracs) = igp.vertical_interp(z, -grid.z)
+    (Ind,Fracs) = interp_functions.vertical_interp(z, -grid.z)
 
     for t in range(0, np.size(Ind, 1)):
         ics_T_vertinterp[t, :] = Fracs[0, t] * ics_Tslice[Ind[0, t], :] + Fracs[1, t] * ics_Tslice[Ind[1, t], :]
@@ -514,13 +509,6 @@ def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
         #plt.show()
         #sys.exit()
 
-    if np.isnan(ics_T).any():
-        print 'ics_T contains NaN values'
-        sys.exit()
-    elif np.isnan(ics_S).any():
-        print 'ics_S contains NaN values'
-        sys.exit()
-
     # Write the files. Don't worry about masking ice and bedrock cells, as MITgcm takes care of this
     write_binary(ics_T, ini_temp_file, prec=prec)
     write_binary(ics_S, ini_salt_file, prec=prec)
@@ -538,13 +526,13 @@ print 'Building grid'
 grid = BasicGrid()
 
 print 'Creating topography'
-make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
+#make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
 print 'Reading info on forcing data'
 forcing = ForcingInfo()
 
 print 'Creating initial conditions'
-make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=64)
+#make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=64)
 
 print 'Creating restoring conditions at open boundaries'
 # note that forcing files have prec=32 by default when used in combination with EXF package (exf_iprec=32)
