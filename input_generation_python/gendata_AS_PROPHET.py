@@ -8,6 +8,8 @@ from scipy.io import loadmat
 from scipy import interpolate
 import sys
 import xarray as xr
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from pyproj import Proj
 import pandas as pd
@@ -21,6 +23,8 @@ from mitgcm_python.utils import z_to_xyz, calc_hfac
 from mitgcm_python.make_domain import do_digging, do_zapping
 from mitgcm_python.ics_obcs import calc_load_anomaly
 from set_parameters import Options
+from input_generation_python import interp_functions
+from convert_ll2psxy import uv_2psxy
 
 # Global parameters
 # These are all things set in the input/data namelist.
@@ -50,33 +54,30 @@ totaltime = int(options.total_time) # in months
 class ForcingInfo:
 
     def __init__ (self):
-        # first, initialize variables
-        self.nt = totaltime
-        self.years,self.months = np.zeros(totaltime), np.zeros(totaltime)
 
-        # assign years and months for forcing
         if constant_forcing:
             print 'Constant OBCS forcing turned ON - write some code here to work out the averaging'
             sys.exit()
         else:
             print 'Time-varying OBCS forcing turned ON'
-            self.years = self.years + ini_year + np.floor(np.arange(totaltime)/12)
-            self.months = self.months + np.mod(np.arange(totaltime),12) + 1
+
         # assign forcing data
         if forcing_data == 'Kimura':
-            print 'Using Kimura data for restoring and initial conditions. I do not have the surface data ' \
-                  'so quit here'
-            sys.exit()
+            print 'Using Kimura data for restoring and initial conditions.'
+            sys.exit('I do not have the surface data so quit here')
             self.Tfile = ''
             self.Sfile = ''
-            self.BC = loadmat('/Volumes/mainJDeRydt/UaMITgcm_v2/MIT_InputData/Kimura_OceanBC.mat')
+            self.Ufile = ''
+            self.Vfile = ''
+            #self.BC = loadmat('/Volumes/mainJDeRydt/UaMITgcm_v2/MIT_InputData/Kimura_OceanBC.mat')
         elif forcing_data == 'Holland':
-            print 'Using Holland data for restoring and initial conditions. OBCS requires a mat file ' \
-                  ' that contains T, S, U and V at the boundaries. Matlab processing scripts for OBCS restoring need to ' \
-                  'be converted to Python at some point...'
-            self.Tfile = '/Volumes/mainJDeRydt/Antarctic_datasets/PIG_Thwaites_DotsonCrosson/MITgcm_AS/PHolland_2019/PAS_851/run/stateTheta.nc'
-            self.Sfile = '/Volumes/mainJDeRydt/Antarctic_datasets/PIG_Thwaites_DotsonCrosson/MITgcm_AS/PHolland_2019/PAS_851/run/stateSalt.nc'
-            self.BC = loadmat('/Volumes/mainJDeRydt/UaMITgcm_v2/MIT_InputData/Holland_OceanBC_PAS_851.mat')
+            print 'Using Holland data for restoring and initial conditions.'
+            forcingdir = '/Volumes/mainJDeRydt/Antarctic_datasets/PIG_Thwaites_DotsonCrosson/MITgcm_AS/PHolland_2019/PAS_851/run/'
+            self.Tfile = forcingdir + 'stateTheta.nc'
+            self.Sfile = forcingdir + 'stateSalt.nc'
+            self.Ufile = forcingdir + 'stateUVEL.nc'
+            self.Vfile = forcingdir + 'stateVVEL.nc'
+            #self.BC = loadmat('/Volumes/mainJDeRydt/UaMITgcm_v2/MIT_InputData/Holland_OceanBC_PAS_851.mat')
         else: 
             print 'Error: input data for restoring and initial conditions not found'
 
@@ -84,12 +85,13 @@ class ForcingInfo:
         BCmonths = np.where(self.BC['month'][-1,:] == ini_month)
         startIndex = np.int(np.intersect1d(BCyears,BCmonths))
         self.startIndex = startIndex
-        self.BC['Theta'] = self.BC['Theta'][:,:,startIndex:startIndex+totaltime]
-        self.BC['Salt'] = self.BC['Salt'][:,:,startIndex:startIndex+totaltime]
-        self.BC['Ups'] = self.BC['Ups'][:,:,startIndex:startIndex+totaltime]
-        self.BC['Vps'] = self.BC['Vps'][:,:,startIndex:startIndex+totaltime]
-        self.BC['year'] = self.BC['year'][:,startIndex:startIndex+totaltime]
-        self.BC['month'] = self.BC['month'][:,startIndex:startIndex+totaltime]
+        print startIndex
+        sys.exit()
+        # self.BC['Theta'] = self.BC['Theta'][:,:,startIndex:-1]
+        # self.BC['Salt'] = self.BC['Salt'][:,:,startIndex:-1]
+        # self.BC['Ups'] = self.BC['Ups'][:,:,startIndex:-1]
+        # self.BC['Vps'] = self.BC['Vps'][:,:,startIndex:-1]
+        # self.BC['time'] = self.BC['time'][:,startIndex:-1]
 
 # ============================================================================================
 # BasicGrid object to hold some information about the grid - just the variables we need to create all the initial conditions, with the same conventions as the mitgcm_python Grid object where needed. This way we can call calc_load_anomaly without needing a full Grid object.
@@ -189,10 +191,10 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
     print 'Zapping ice shelf drafts which are too thin'
     draft = do_zapping(draft, draft!=0, grid.dz, grid.z_edges, hFacMinDr=hFacMinDr)[0]
 
-    N = 1
-    plt.pcolor(grid.x2d[0:-1:N, 0:-1:N], grid.y2d[0:-1:N, 0:-1:N], draft[0:-1:N, 0:-1:N]-bathy[0:-1:N, 0:-1:N])
-    plt.colorbar()
-    plt.show()
+    #N = 1
+    #plt.pcolor(grid.x2d[0:-1:N, 0:-1:N], grid.y2d[0:-1:N, 0:-1:N], draft[0:-1:N, 0:-1:N]-bathy[0:-1:N, 0:-1:N])
+    #plt.colorbar()
+    #plt.show()
 
     # Calculate hFacC and save to the grid for later
     grid.save_hfac(bathy, draft)
@@ -202,47 +204,181 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
     write_binary(draft, draft_file, prec=prec)
 
 # ============================================================================================
-# Returns temperature and salinity profiles, varying with depth, to be used for OBCS conditions.
-def ts_profile(x,y,z,obcs):
-
-    sizetz = (obcs.nt,np.shape(z)[0])
-    t_profile, s_profile, u_profile, v_profile = np.zeros(sizetz), np.zeros(sizetz), np.zeros(sizetz), np.zeros(sizetz)
-
-    L = np.sqrt((x-obcs.BC['x'][:,0])**2+(y-obcs.BC['y'][:,0])**2)
-    IL = np.nanargmin(L)
-
-    for i in range(0,obcs.nt):    
-        findtime = np.in1d(obcs.BC['year'], obcs.years[i]) & np.in1d(obcs.BC['month'], obcs.months[i])
-        Itime = np.where(findtime)
-        Itime = Itime[0][0]
-        t_profile[i,:] = np.interp(-z, -obcs.BC['depth'][:,0], obcs.BC['Theta'][IL,:,Itime])
-        s_profile[i,:] = np.interp(-z, -obcs.BC['depth'][:,0], obcs.BC['Salt'][IL,:,Itime])
-        u_profile[i,:] = np.interp(-z, -obcs.BC['depth'][:,0], obcs.BC['Ups'][IL,:,Itime])
-        v_profile[i,:] = np.interp(-z, -obcs.BC['depth'][:,0], obcs.BC['Vps'][IL,:,Itime])
-
-    return t_profile, s_profile, u_profile, v_profile
-
-# ============================================================================================
 # Creates OBCS for the southern/western boundary
 def make_obcs (grid, forcing, obcs_temp_file_S, obcs_salt_file_S, obcs_uvel_file_S, obcs_vvel_file_S, obcs_temp_file_W, obcs_salt_file_W, obcs_uvel_file_W, obcs_vvel_file_W, prec):
-    
-    sizetzx = (forcing.nt,grid.nz,grid.nx)
-    sizetzy = (forcing.nt,grid.nz,grid.ny)
 
-    ## Southern boundary
-    OBS_t, OBS_s, OBS_u, OBS_v = np.zeros(sizetzx), np.zeros(sizetzx), np.zeros(sizetzx), np.zeros(sizetzx)
-    
-    for i in xrange(0,grid.nx):
-        x = grid.x[i]
-        y = grid.y[0]-grid.dy/2
-        t_profile, s_profile, u_profile, v_profile = ts_profile(x,y,grid.z,forcing)
-        OBS_t[:,:,i] = t_profile
-        OBS_s[:,:,i] = s_profile
-        OBS_u[:,:,i] = u_profile
-        OBS_v[:,:,i] = v_profile
+    # OBCS package requires xz and yz slices at regular time intervals - 2592000s (30days) in our case
+    # First we interpolate the forcing data onto the boundary of our domain. Then we interpolate to a regular
+    # time interval
+
+    # define forcing data
+    T = xr.open_dataset(forcing.Tfile)
+    S = xr.open_dataset(forcing.Sfile)
+    U = xr.open_dataset(forcing.Ufile)
+    V = xr.open_dataset(forcing.Vfile)
+    lon, lat, z, time = T.LONGITUDE, T.LATITUDE, T.DEPTH, T.TIME
+    lon2d, lat2d = np.meshgrid(lon, lat)
+
+    # define boundary coordinates of our regional MITgcm configuration
+    x1dW, y1dW = np.meshgrid(grid.x[0]-grid.dx/2,grid.y) # 'western' boundary, i.e. constant x
+    x1dS, y1dS = np.meshgrid(grid.x,grid.y[0]-grid.dy/2) # 'southern' boundary, i.e. constant y
+
+    # convert boundary coordinates to lat and lon for interpolation
+    p = Proj('+init=EPSG:3031')
+    lon1dW, lat1dW = p(x1dW, y1dW, inverse=True)
+    lon1dW = lon1dW + 360
+    lon1dS, lat1dS = p(x1dS, y1dS, inverse=True)
+    lon1dS = lon1dS + 360
+
+    # reduce the size of the forcing dataset to save memory
+    lonmin, lonmax = np.min(np.concatenate([lon1dW, lon1dS.T])), np.max(np.concatenate([lon1dW, lon1dS.T]))
+    latmin, latmax = np.min(np.concatenate([lat1dW, lat1dS.T])), np.max(np.concatenate([lat1dW, lat1dS.T]))
+    lonmin, latmin = lonmin, latmin - 0.1  # take a bit more for interpolation
+    lonmax, latmax = lonmax, latmax + 0.1
+
+    cond1d = ((lon >= lonmin) & (lon <= lonmax))
+    Ilon = np.where(cond1d)[0]
+    cond1d = ((lat >= latmin) & (lat <= latmax))
+    Ilat = np.where(cond1d)[0]
+    Iz = np.where((-z > grid.z[-1]-300))[0]
+    Ilonmin, Ilatmin, Izmin = np.min(Ilon).astype('int'), np.min(Ilat).astype('int'), np.min(Iz).astype('int')
+    Ilonmax, Ilatmax, Izmax = np.max(Ilon).astype('int'), np.max(Ilat).astype('int'), np.max(Iz).astype('int')
+
+    # Now loop through time dimension of forcing data and extract T,S,U and V at boundary
+    # initialize variables
+    OBW_t = np.zeros((np.shape(time)[0], grid.nz, np.shape(lon1dW)[0]))
+    OBW_s = np.zeros((np.shape(time)[0], grid.nz, np.shape(lon1dW)[0]))
+    OBW_u = np.zeros((np.shape(time)[0], grid.nz, np.shape(lon1dW)[0]))
+    OBW_v = np.zeros((np.shape(time)[0], grid.nz, np.shape(lon1dW)[0]))
+    OBS_t = np.zeros((np.shape(time)[0], grid.nz, np.shape(lon1dS)[1]))
+    OBS_s = np.zeros((np.shape(time)[0], grid.nz, np.shape(lon1dS)[1]))
+    OBS_u = np.zeros((np.shape(time)[0], grid.nz, np.shape(lon1dS)[1]))
+    OBS_v = np.zeros((np.shape(time)[0], grid.nz, np.shape(lon1dS)[1]))
+
+    for t in range(0,np.shape(time)[0]):
+        # Extract T, S, U & V arrays from the forcing data for reduced spatial domain, horizontal level and time
+        T_slice = T.isel(LONGITUDE=range(Ilonmin, Ilonmax+1), LATITUDE=range(Ilatmin, Ilatmax+1), DEPTH=range(Izmin, Izmax+1), TIME=t)
+        S_slice = S.isel(LONGITUDE=range(Ilonmin, Ilonmax+1), LATITUDE=range(Ilatmin, Ilatmax+1), DEPTH=range(Izmin, Izmax+1), TIME=t)
+        U_slice = U.isel(LONGITUDE=range(Ilonmin, Ilonmax+1), LATITUDE=range(Ilatmin, Ilatmax+1), DEPTH=range(Izmin, Izmax+1), TIME=t)
+        V_slice = V.isel(LONGITUDE=range(Ilonmin, Ilonmax+1), LATITUDE=range(Ilatmin, Ilatmax+1), DEPTH=range(Izmin, Izmax+1), TIME=t)
+
+        lon1d = lon2d[Ilat[:,None], Ilon[None,:]].ravel()
+        lat1d = lat2d[Ilat[:, None], Ilon[None, :]].ravel()
+        T_slice = T_slice.THETA.values
+        S_slice = S_slice.SALT.values
+        U_slice = U_slice.UVEL.values
+        V_slice = V_slice.VVEL.values
+
+        OBW_t_temp = np.zeros((np.shape(Iz)[0], np.shape(lon1dW)[0]))
+        OBW_s_temp = np.zeros((np.shape(Iz)[0], np.shape(lon1dW)[0]))
+        OBW_u_temp = np.zeros((np.shape(Iz)[0], np.shape(lon1dW)[0]))
+        OBW_v_temp = np.zeros((np.shape(Iz)[0], np.shape(lon1dW)[0]))
+        OBS_t_temp = np.zeros((np.shape(Iz)[0], np.shape(lon1dS)[1]))
+        OBS_s_temp = np.zeros((np.shape(Iz)[0], np.shape(lon1dS)[1]))
+        OBS_u_temp = np.zeros((np.shape(Iz)[0], np.shape(lon1dS)[1]))
+        OBS_v_temp = np.zeros((np.shape(Iz)[0], np.shape(lon1dS)[1]))
+
+        # interpolate horizontal slices
+        for iz in range(0,np.shape(T_slice)[0]):
+            t_y = interp_functions.horizontal_interp_nonan(lon1d, lat1d, lon1dW, lat1dW, T_slice[iz,:,:].ravel())
+            s_y = interp_functions.horizontal_interp_nonan(lon1d, lat1d, lon1dW, lat1dW, S_slice[iz,:,:].ravel())
+            u_y = interp_functions.horizontal_interp_nonan(lon1d, lat1d, lon1dW, lat1dW, U_slice[iz,:,:].ravel())
+            v_y = interp_functions.horizontal_interp_nonan(lon1d, lat1d, lon1dW, lat1dW, V_slice[iz,:,:].ravel())
+            OBW_t_temp[iz, :] = t_y.ravel()
+            OBW_s_temp[iz, :] = s_y.ravel()
+            OBW_u_temp[iz, :] = u_y.ravel()
+            OBW_v_temp[iz, :] = v_y.ravel()
+
+            t_x = interp_functions.horizontal_interp_nonan(lon1d, lat1d, lon1dS, lat1dS, T_slice[iz, :, :].ravel())
+            s_x = interp_functions.horizontal_interp_nonan(lon1d, lat1d, lon1dS, lat1dS, S_slice[iz, :, :].ravel())
+            u_x = interp_functions.horizontal_interp_nonan(lon1d, lat1d, lon1dS, lat1dS, U_slice[iz, :, :].ravel())
+            v_x = interp_functions.horizontal_interp_nonan(lon1d, lat1d, lon1dS, lat1dS, V_slice[iz, :, :].ravel())
+            OBS_t_temp[iz, :] = t_x.ravel()
+            OBS_s_temp[iz, :] = s_x.ravel()
+            OBS_u_temp[iz, :] = u_x.ravel()
+            OBS_v_temp[iz, :] = v_x.ravel()
+
+        # interpolate vertical levels
+        (Int,Fracs) = interp_functions.vertical_interp(z, -grid.z)
+
+        fracs0W_2d = np.repeat(Fracs[0, :, np.newaxis], np.shape(OBW_t_temp)[1], axis=1)
+        fracs1W_2d = np.repeat(Fracs[1, :, np.newaxis], np.shape(OBW_t_temp)[1], axis=1)
+        fracs0S_2d = np.repeat(Fracs[0, :, np.newaxis], np.shape(OBS_t_temp)[1], axis=1)
+        fracs1S_2d = np.repeat(Fracs[1, :, np.newaxis], np.shape(OBS_t_temp)[1], axis=1)
+
+        OBW_t[t, :, :] = fracs0W_2d * OBW_t_temp[Int[0, :], :] + fracs1W_2d * OBW_t_temp[Int[1, :], :]
+        OBW_s[t, :, :] = fracs0W_2d * OBW_s_temp[Int[0, :], :] + fracs1W_2d * OBW_s_temp[Int[1, :], :]
+        OBW_u[t, :, :] = fracs0W_2d * OBW_u_temp[Int[0, :], :] + fracs1W_2d * OBW_u_temp[Int[1, :], :]
+        OBW_v[t, :, :] = fracs0W_2d * OBW_v_temp[Int[0, :], :] + fracs1W_2d * OBW_v_temp[Int[1, :], :]
+        OBS_t[t, :, :] = fracs0S_2d * OBS_t_temp[Int[0, :], :] + fracs1S_2d * OBS_t_temp[Int[1, :], :]
+        OBS_s[t, :, :] = fracs0S_2d * OBS_s_temp[Int[0, :], :] + fracs1S_2d * OBS_s_temp[Int[1, :], :]
+        OBS_u[t, :, :] = fracs0S_2d * OBS_u_temp[Int[0, :], :] + fracs1S_2d * OBS_u_temp[Int[1, :], :]
+        OBS_v[t, :, :] = fracs0S_2d * OBS_v_temp[Int[0, :], :] + fracs1S_2d * OBS_v_temp[Int[1, :], :]
+
+        # print some info
+        print 'Done ',t+1,' out of ',np.shape(time)[0],' time slices'
+
+        #L, Z = np.meshgrid(lon1dW, grid.z)
+        #plt.pcolor(Z, L, np.squeeze(OBW_t[0, :, :]))
+        #plt.colorbar()
+        #plt.show()
+        #sys.exit()
+
+    # Remove variables from workspace
+    OBS_t_temp, OBS_s_temp, OBS_u_temp, OBS_v_temp = None, None, None, None
+    fracs0W_2d, fracs0S_2d, fracs1S_2d, fracs1W_2d = None, None, None, None
+    T_slice, S_slice, U_slice, V_slice = None, None, None, None
+
+    # interpolate to regular time intervals of 30 days
+    (Int, Fracs) = interp_functions.time_interp_reg(time.TIME.values, 30)
+
+    # Western Boundary
+    fracs0W_3d = np.repeat(Fracs[0, :, np.newaxis], np.shape(OBW_t)[1], axis=1)
+    fracs0W_3d = np.repeat(fracs0W_3d[:, : ,np.newaxis], np.shape(OBW_t)[2], axis=2)
+    fracs1W_3d = np.repeat(Fracs[1, :, np.newaxis], np.shape(OBW_t)[1], axis=1)
+    fracs1W_3d = np.repeat(fracs1W_3d[:, :, np.newaxis], np.shape(OBW_t)[2], axis=2)
+
+    OBW_t = fracs0W_3d * OBW_t[Int[0, :], :, :] + fracs1W_3d * OBW_t[Int[1, :], :, :]
+    OBW_s = fracs0W_3d * OBW_s[Int[0, :], :, :] + fracs1W_3d * OBW_s[Int[1, :], :, :]
+    OBW_u = fracs0W_3d * OBW_u[Int[0, :], :, :] + fracs1W_3d * OBW_u[Int[1, :], :, :]
+    OBW_v = fracs0W_3d * OBW_v[Int[0, :], :, :] + fracs1W_3d * OBW_v[Int[1, :], :, :]
+
+    # Convert u and v from lat lon to ps
+    Ull = np.reshape(OBW_u,(np.shape(Int)[1]*grid.nz, np.shape(lon1dW)[0]))
+    Vll = np.reshape(OBW_v,(np.shape(Int)[1]*grid.nz, np.shape(lon1dW)[0]))
+    Ups, Vps = uv_2psxy(Ull,Vll,np.squeeze(lon1dW),np.squeeze(lat1dW))
+    OBW_u = np.reshape(Ups, (np.shape(Int)[1], grid.nz, np.shape(lon1dW)[0]))
+    OBW_v = np.reshape(Vps, (np.shape(Int)[1], grid.nz, np.shape(lon1dW)[0]))
 
     # Write the files
     # No need to mask out the land because MITgcm will do that for us
+    write_binary(OBW_t, obcs_temp_file_W, prec)
+    write_binary(OBW_s, obcs_salt_file_W, prec)
+    write_binary(OBW_u, obcs_uvel_file_W, prec)
+    write_binary(OBW_v, obcs_vvel_file_W, prec)
+
+    # Remove variables from workspace
+    OBW_t, OBW_s, OBW_u, OBW_v = None, None, None, None
+    fracs0W_3d, fracs1W_3d = None, None
+
+    # Southern Boundary
+    fracs0S_3d = np.repeat(Fracs[0, :, np.newaxis], np.shape(OBS_t)[1], axis=1)
+    fracs0S_3d = np.repeat(fracs0S_3d[:, :, np.newaxis], np.shape(OBS_t)[2], axis=2)
+    fracs1S_3d = np.repeat(Fracs[1, :, np.newaxis], np.shape(OBS_t)[1], axis=1)
+    fracs1S_3d = np.repeat(fracs1S_3d[:, :, np.newaxis], np.shape(OBS_t)[2], axis=2)
+
+    OBS_t = fracs0S_3d * OBS_t[Int[0, :], :, :] + fracs1S_3d * OBS_t[Int[1, :], :, :]
+    OBS_s = fracs0S_3d * OBS_s[Int[0, :], :, :] + fracs1S_3d * OBS_s[Int[1, :], :, :]
+    OBS_u = fracs0S_3d * OBS_u[Int[0, :], :, :] + fracs1S_3d * OBS_u[Int[1, :], :, :]
+    OBS_v = fracs0S_3d * OBS_v[Int[0, :], :, :] + fracs1S_3d * OBS_v[Int[1, :], :, :]
+
+    # Convert u and v from lat lon to ps
+    Ull = np.reshape(OBS_u, (np.shape(Int)[1] * grid.nz, np.shape(lon1dS)[1]))
+    Vll = np.reshape(OBS_v, (np.shape(Int)[1] * grid.nz, np.shape(lon1dS)[1]))
+    Ups, Vps = uv_2psxy(Ull,Vll,np.squeeze(lon1dS),np.squeeze(lat1dS))
+    OBS_u = np.reshape(Ups, (np.shape(Int)[1], grid.nz, np.shape(lon1dS)[1]))
+    OBS_v = np.reshape(Vps, (np.shape(Int)[1], grid.nz, np.shape(lon1dS)[1]))
+
     write_binary(OBS_t, obcs_temp_file_S, prec)
     write_binary(OBS_s, obcs_salt_file_S, prec)
     write_binary(OBS_u, obcs_uvel_file_S, prec)
@@ -250,27 +386,7 @@ def make_obcs (grid, forcing, obcs_temp_file_S, obcs_salt_file_S, obcs_uvel_file
 
     # Remove variables from workspace
     OBS_t, OBS_s, OBS_u, OBS_v = None, None, None, None
-
-    ## Western boundary
-    OBW_t, OBW_s, OBW_u, OBW_v = np.zeros(sizetzy), np.zeros(sizetzy), np.zeros(sizetzy), np.zeros(sizetzy)
-    
-    for i in xrange(0,grid.ny):
-        x = grid.x[0]-grid.dx/2
-        y = grid.y[i]
-        t_profile, s_profile, u_profile, v_profile = ts_profile(x,y,grid.z,forcing)
-        OBW_t[:,:,i] = t_profile
-        OBW_s[:,:,i] = s_profile
-        OBW_u[:,:,i] = u_profile
-        OBW_v[:,:,i] = v_profile
-
-    # Write the files
-    write_binary(OBW_t, obcs_temp_file_W, prec)
-    write_binary(OBW_s, obcs_salt_file_W, prec)
-    write_binary(OBW_u, obcs_uvel_file_W, prec)
-    write_binary(OBW_v, obcs_vvel_file_W, prec)
-
-    # Remove variable from workspace
-    OBW_t, OBW_s, OBW_u, OBW_v = None, None, None, None
+    fracs0S_3d, fracs1S_3d = None, None
 
 # ============================================================================================
 # Creates RBCS files for surface restoring
@@ -289,9 +405,10 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
 
     # Now extract T & S arrays at the surface from the forcing data.
     # New T & S arrays have dimensions (nt, ny, nx),
-    # The time slices correspond to restoring conditions at the end of each calendar month, averaged over
-    # the preceding month (will be interpolated onto regular interval of 30 days later on - this is required by RBCS)
-    # The horizontal slices are regridded to the local MITgcm grid
+    # The time slices in the forcing data correspond to T & S at the end of each calendar month, averaged over
+    # the preceding month. RBCS requires restoring conditions at regular intervals (30 days in our case) so
+    # we will need to do some interpolation from calendar dates to regular 30-day intervals.
+    # Horizontal slices are regridded to the local MITgcm grid
     k=0 # a dummy index
     RBsurf_t_full = np.zeros(sizetyx) # define T & S arrays with correct dimensions
     RBsurf_s_full = np.zeros(sizetyx)
@@ -302,21 +419,8 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
         Ssurf_slice = S.isel(DEPTH=slice(1),TIME=t)
         Tsurf = Tsurf_slice.THETA.values.ravel()
         Ssurf = Ssurf_slice.SALT.values.ravel()
-        # eliminate zeros as these will lead to unrealistic T & S values during interpolation
-        Tsurf = Tsurf[Ssurf != 0]
-        x = lon1d[Ssurf != 0]
-        y = lat1d[Ssurf != 0]
-        Ssurf = Ssurf[Ssurf != 0]
-        # interpolate using linear barycentric interpolation where triangles exist,
-        # and allow extrapolation with nearest values where triangles do not exist. The latter only occurs in very small
-        # areas close to the ice front
-        t_xx = interpolate.griddata((x, y), Tsurf, (grid.lon2d, grid.lat2d), method='linear',fill_value=np.nan)
-        t_ss = interpolate.griddata((x, y), Tsurf, (grid.lon2d, grid.lat2d), method='nearest')
-        t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
-        s_xx = interpolate.griddata((x, y), Ssurf, (grid.lon2d, grid.lat2d), method='linear',fill_value=np.nan)
-        s_ss = interpolate.griddata((x, y), Ssurf, (grid.lon2d, grid.lat2d), method='nearest')
-        s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
-        # assign regridded timeslice to full array
+        t_xx = interp_functions.horizontal_interp_nonan(lon1d,lat1d,grid.lon2d,grid.lat2d,Tsurf)
+        s_xx = interp_functions.horizontal_interp_nonan(lon1d,lat1d,grid.lon2d,grid.lat2d,Ssurf)
         RBsurf_t_full[k, :, :] = t_xx
         RBsurf_s_full[k, :, :] = s_xx
         RBsurf_time[k] = Tsurf_slice.TIME.values
@@ -333,19 +437,9 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
     # RBCS has a constant forcing period so we interpolate RBsurf_t and RBsurf_s
     # linearly to fit equally spaced time intervals
     # original timeseries and corresponding indices
-    torig = pd.to_datetime(RBsurf_time)
-    df = pd.DataFrame(np.arange(0,totaltime-1),index=torig,columns=list('I'))
-    df = df.resample('D').mean().interpolate('linear')
-    teq = df.resample('30D').nearest()
+    (Ind,Fracs) = interp_functions.time_interp_reg(RBsurf_time,30)
 
-    Ind = (np.floor(teq['I']), np.ceil(teq['I']))
-    Ind = np.asarray(Ind)
-    Fracs = (Ind[1, :] - teq['I'], teq['I'] - Ind[0, :])
-    Fracs = np.asarray(Fracs)
-    Fracs[(Fracs == 0) & (Ind[0, :] == Ind[1, :])] = 0.5
-    Ind = Ind.astype('int')
-
-    # Interpolate to regular intervals
+    # Interpolate to regular time intervals
     for t in range(0,np.size(Ind,1)):
         RBsurf_t = np.zeros(sizezyx)
         RBsurf_s = np.zeros(sizezyx)
@@ -392,18 +486,11 @@ def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
     # slice full T and S arrays to correct time
     ics_Tslice = T.isel(TIME=forcing.startIndex).THETA.values
     ics_Sslice = S.isel(TIME=forcing.startIndex).SALT.values
-
-    # linearly interpolate vertical levels first
-    FI = interpolate.interp1d(z,np.arange(0,nz),kind='linear')
-    I = FI(-grid.z)
-    Ind = (np.floor(I), np.ceil(I))
-    Ind = np.asarray(Ind)
-    Fracs = (Ind[1, :] - I, I - Ind[0, :])
-    Fracs = np.asarray(Fracs)
-    Fracs[(Fracs == 0) & (Ind[0, :] == Ind[1, :])] = 0.5
-    Ind = Ind.astype('int')
     ics_Tslice = np.reshape(ics_Tslice, (nz, nx * ny))
     ics_Sslice = np.reshape(ics_Sslice, (nz, nx * ny))
+
+    (Ind,Fracs) = igp.vertical_interp(z, -grid.z)
+
     for t in range(0, np.size(Ind, 1)):
         ics_T_vertinterp[t, :] = Fracs[0, t] * ics_Tslice[Ind[0, t], :] + Fracs[1, t] * ics_Tslice[Ind[1, t], :]
         ics_S_vertinterp[t, :] = Fracs[0, t] * ics_Sslice[Ind[0, t], :] + Fracs[1, t] * ics_Sslice[Ind[1, t], :]
@@ -414,17 +501,8 @@ def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
     for k in range(0,grid.nz):
         Tslice = ics_T_vertinterp[k,:]
         Sslice = ics_S_vertinterp[k,:]
-        x, y = lon1d, lat1d
-        Tslice = Tslice[Sslice != 0]
-        x = x[Sslice != 0]
-        y = y[Sslice != 0]
-        Sslice = Sslice[Sslice != 0]
-        t_xx = interpolate.griddata((x, y), Tslice, (grid.lon2d, grid.lat2d), method='linear',fill_value=np.nan)
-        t_ss = interpolate.griddata((x, y), Tslice, (grid.lon2d, grid.lat2d), method='nearest')
-        t_xx[(np.isnan(t_xx))] = t_ss[(np.isnan(t_xx))]
-        s_xx = interpolate.griddata((x, y), Sslice, (grid.lon2d, grid.lat2d), method='linear',fill_value=np.nan)
-        s_ss = interpolate.griddata((x, y), Sslice, (grid.lon2d, grid.lat2d), method='nearest')
-        s_xx[(np.isnan(s_xx))] = s_ss[(np.isnan(s_xx))]
+        t_xx = interp_functions.horizontal_interp_nonan(lon1d, lat1d, grid.lon2d, grid.lat2d, Tslice)
+        s_xx = interp_functions.horizontal_interp_nonan(lon1d, lat1d, grid.lon2d, grid.lat2d, Sslice)
         # assign regridded horizontal slice to full array
         ics_T[k,:,:] = t_xx
         ics_S[k,:,:] = s_xx
@@ -435,6 +513,13 @@ def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, prec):
         #plt.colorbar()
         #plt.show()
         #sys.exit()
+
+    if np.isnan(ics_T).any():
+        print 'ics_T contains NaN values'
+        sys.exit()
+    elif np.isnan(ics_S).any():
+        print 'ics_S contains NaN values'
+        sys.exit()
 
     # Write the files. Don't worry about masking ice and bedrock cells, as MITgcm takes care of this
     write_binary(ics_T, ini_temp_file, prec=prec)
@@ -452,14 +537,19 @@ input_dir = options.mit_case_dir+'input/'
 print 'Building grid'
 grid = BasicGrid()
 
-print 'Reading obcs data'
-forcing = ForcingInfo()
-
-#print 'Creating topography'
+print 'Creating topography'
 make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
-#print 'Creating initial and boundary conditions'
-make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=64)
-#make_rbcs(grid, forcing, input_dir+'rbcs_surf_T', input_dir+'rbcs_surf_S', input_dir+'rbcs_mask_T', input_dir+'rbcs_mask_S', prec=64)
+print 'Reading info on forcing data'
+forcing = ForcingInfo()
+
+print 'Creating initial conditions'
 make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', prec=64)
-    
+
+print 'Creating restoring conditions at open boundaries'
+# note that forcing files have prec=32 by default when used in combination with EXF package (exf_iprec=32)
+#make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', prec=32)
+
+print 'Creating restoring conditions at surface'
+# note that forcing files have prec=32 by default when used in combination with EXF package (exf_iprec=32)
+#make_rbcs(grid, forcing, input_dir+'rbcs_surf_T', input_dir+'rbcs_surf_S', input_dir+'rbcs_mask_T', input_dir+'rbcs_mask_S', prec=32)
