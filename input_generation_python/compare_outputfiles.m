@@ -28,7 +28,7 @@ for ii=1:length(xyfiles)
     sgtitle(xyfiles{ii},'interpreter','none');
 end
 
-xyzfiles = {};%{'T_ini.bin','S_ini.bin'};
+xyzfiles = {'T_ini.bin','S_ini.bin'};
 for ii=1:length(xyzfiles)
     fid1 = fopen([froot1,xyzfiles{ii}],'r');
     data1 = fread(fid1,prec,ieee);
@@ -38,11 +38,13 @@ for ii=1:length(xyzfiles)
     data2 = reshape(data2,nx2,ny2,nz2);
     % plot xy slice at -500m
     figure; hold on;
-    subplot(1,2,1); pcolor(squeeze(data1(:,:,25))'); shading flat; axis equal;
-    data2 = squeeze(data2(:,:,25));
+    subplot(1,2,1); pcolor(squeeze(data1(:,:,1))'); shading flat; axis equal;
+    data2 = squeeze(data2(:,:,1));
     subplot(1,2,2); pcolor(data2'); shading flat; axis equal;
     sgtitle(xyzfiles{ii},'interpreter','none');
 end
+
+return
 
 prec='real*4';
 

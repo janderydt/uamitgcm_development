@@ -1,15 +1,11 @@
 # T&S restoring at the surface
  &RBCS_PARM01
-# forcing files are provided at the end of the month, whereas the forcing period assumes a Gregorian Calendar with a
-# fixed cycle of leap years: 0.25*(3*365 + 366)*24*60*60/12
- rbcsForcingPeriod=2629800,
+ rbcsForcingPeriod=0,
  rbcsForcingCycle=0,
 # place first forcing file at starttime instead of starttime-forcingperiod/2
  rbcsForcingOffset=1314900,
 # provide single files for each forcing period to keep file sizes manageable
- rbcsSingleTimeFiles=.TRUE.,
 # deltaT is the same as forcing period
- deltaTrbcs=2629800,
  rbcsIter0=0,
  useRBCtemp=.TRUE.,
  useRBCsalt=.TRUE.,
@@ -18,8 +14,8 @@
  tauRelaxT=86400,
  tauRelaxS=86400,
  relaxMaskFile='rbcs_mask_T.bin','rbcs_mask_S.bin',
- relaxTFile='rbcs_surf_T',
- relaxSFile='rbcs_surf_S',
+ relaxTFile='rbcs_surf_T.bin',
+ relaxSFile='rbcs_surf_S.bin',
  &
 
  &RBCS_PARM02

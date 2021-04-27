@@ -2,7 +2,6 @@
 # User-defined options for the configuration.
 #################################################
 
-
 ###### 1. Server workflow options ######
 
 ### Experiment name, this will be stamped on some files
