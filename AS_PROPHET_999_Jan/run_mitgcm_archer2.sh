@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --time=00:05:00
-#SBATCH --nodes=1
-#SBATCH --tasks-per-node=128
+#SBATCH --nodes=2
+#SBATCH --tasks-per-node=120
 #SBATCH --cpus-per-task=1
 #SBATCH --partition=standard
 #SBATCH --qos=standard

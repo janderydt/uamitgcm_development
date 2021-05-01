@@ -3,16 +3,16 @@
  rbcsForcingPeriod=0,
  rbcsForcingCycle=0,
 # place first forcing file at starttime instead of starttime-forcingperiod/2
- rbcsForcingOffset=1314900,
+ rbcsForcingOffset=0,
 # provide single files for each forcing period to keep file sizes manageable
 # deltaT is the same as forcing period
  rbcsIter0=0,
  useRBCtemp=.TRUE.,
  useRBCsalt=.TRUE.,
  useRBCptracers=.FALSE.,
-# set 1 day relaxation timescale at surface
- tauRelaxT=86400,
- tauRelaxS=86400,
+# set 2 hrs relaxation timescale at surface
+ tauRelaxT=7200,
+ tauRelaxS=7200,
  relaxMaskFile='rbcs_mask_T.bin','rbcs_mask_S.bin',
  relaxTFile='rbcs_surf_T.bin',
  relaxSFile='rbcs_surf_S.bin',

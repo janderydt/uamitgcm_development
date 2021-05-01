@@ -33,8 +33,8 @@ nx = 240    # first part of delX
 dx = 1000   # second part of delX
 ny = 480    # first part of delY
 dy = 1000   # second part of delY
-nz = [80, 10]   # first part of delZ
-dz = [20, 40]   # second part of delZ
+nz = [4, 78, 10]   # first part of delZ
+dz = [10, 20, 40]   # second part of delZ
 eosType = 'MDJWF'
 rhoConst = 1024.
 hFacMin = 0.05
@@ -411,7 +411,7 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
     # define forcing data
     T = xr.open_dataset(forcing.Tfile)
     S = xr.open_dataset(forcing.Sfile)
-    lon, lat, time = T.LONGITUDE, T.LATITUDE, T.TIME
+    lon, lat, z, time = T.LONGITUDE, T.LATITUDE, T.DEPTH, T.TIME
     lon2d, lat2d = np.meshgrid(lon, lat)
     lon1d = lon2d.ravel()
     lat1d = lat2d.ravel()
@@ -429,7 +429,7 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
     else:
         nt = np.shape(time)[0]
 
-    sizetyx = (nt, grid.ny, grid.nx)
+    sizetzyx = (nt, 4, grid.ny, grid.nx)
     sizezyx = (grid.nz, grid.ny, grid.nx)
 
     # New T & S arrays have dimensions (nt, ny, nx),
@@ -438,22 +438,30 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
     # we will need to do some interpolation from calendar dates to regular 30-day intervals.
     # Horizontal slices are regridded to the local MITgcm grid
     k=0 # a dummy index
-    RBsurf_t_full = np.zeros(sizetyx) # define T & S arrays with correct dimensions
-    RBsurf_s_full = np.zeros(sizetyx)
+    RBsurf_t_tzyx = np.zeros(sizetzyx) # define T & S arrays with correct dimensions
+    RBsurf_s_tzyx = np.zeros(sizetzyx)
     RBsurf_time = np.empty(nt,dtype='datetime64[ns]') # define time array
 
     for t in range(startIndex, startIndex+nt):
-        # slice full T and S arrays to surface layer and time t
-        Tsurf_slice = T.isel(DEPTH=slice(1),TIME=t)
-        Ssurf_slice = S.isel(DEPTH=slice(1),TIME=t)
-        Tsurf = Tsurf_slice.THETA.values.ravel()
-        Ssurf = Ssurf_slice.SALT.values.ravel()
-        t_xx = interp_functions.horizontal_interp_nonan(lon1d,lat1d,grid.lon2d,grid.lat2d,Tsurf)
-        s_xx = interp_functions.horizontal_interp_nonan(lon1d,lat1d,grid.lon2d,grid.lat2d,Ssurf)
-        RBsurf_t_full[k, :, :] = t_xx
-        RBsurf_s_full[k, :, :] = s_xx
-        RBsurf_time[k] = Tsurf_slice.TIME.values
-        # print some info and step dummy index
+        # slice full T and S arrays to top 4 layers and time t
+        for iz in range(0,4):
+            Tsurf_slice = T.isel(DEPTH=iz,TIME=t)
+            Ssurf_slice = S.isel(DEPTH=iz,TIME=t)
+            Tsurf = Tsurf_slice.THETA.values.ravel()
+            Ssurf = Ssurf_slice.SALT.values.ravel()
+            t_xx = interp_functions.horizontal_interp_nonan(lon1d,lat1d,grid.lon2d,grid.lat2d,Tsurf)
+            s_xx = interp_functions.horizontal_interp_nonan(lon1d,lat1d,grid.lon2d,grid.lat2d,Ssurf)
+            RBsurf_t_tzyx[k, iz, :, :] = t_xx
+            RBsurf_s_tzyx[k, iz, :, :] = s_xx
+            RBsurf_time[k] = Tsurf_slice.TIME.values
+            # print some info and step dummy index
+
+        # vertical interpolation
+        (Int, Fracs) = interp_functions.vertical_interp(z, -grid.z[0:4])
+
+        if np.any((Fracs.ravel() != 0.5)):
+            sys.exit('Need to vertically integrate for RBCS')
+
         print 'Done ',k+1,' out of ',nt
         k=k+1
         # N = 1
@@ -476,11 +484,11 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
         for t in range(0,np.size(Ind,1)):
             RBsurf_t = np.zeros(sizezyx)
             RBsurf_s = np.zeros(sizezyx)
-            RBsurf_t_reg = Fracs[0, t] * RBsurf_t_full[Ind[0, t], :, :] + Fracs[1, t] * RBsurf_t_full[Ind[1, t], :, :]
-            RBsurf_s_reg = Fracs[0, t] * RBsurf_s_full[Ind[0, t], :, :] + Fracs[1, t] * RBsurf_s_full[Ind[1, t], :, :]
+            RBsurf_t_reg = Fracs[0, t] * RBsurf_t_tzyx[Ind[0, t], :, :, :] + Fracs[1, t] * RBsurf_t_tzyx[Ind[1, t], :, :, :]
+            RBsurf_s_reg = Fracs[0, t] * RBsurf_s_tzyx[Ind[0, t], :, :, :] + Fracs[1, t] * RBsurf_s_tzyx[Ind[1, t], :, :, :]
             # generate 3D arrays for T, S at each time interval
-            RBsurf_t[0, :, :] = RBsurf_t_reg
-            RBsurf_s[0, :, :] = RBsurf_s_reg
+            RBsurf_t[0:4, :, :] = RBsurf_t_reg
+            RBsurf_s[0:4, :, :] = RBsurf_s_reg
             # Write binary files for T, S and Mask at each time interval.
             # No need to take care of mask as MITgcm will do this.
             write_binary(RBsurf_t, rbcs_temp_file+'.'+str(t).zfill(10)+'.data', prec)
@@ -498,8 +506,8 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
             RBsurf_t = np.zeros(sizezyx)
             RBsurf_s = np.zeros(sizezyx)
             # generate 3D arrays for T, S at each time interval
-            RBsurf_t[0, :, :] = RBsurf_t_full[t, :, :]
-            RBsurf_s[0, :, :] = RBsurf_s_full[t, :, :]
+            RBsurf_t[0:4, :, :, :] = RBsurf_t_tzyx[t, :, :, :]
+            RBsurf_s[0:4, :, :, :] = RBsurf_s_tzyx[t, :, :, :]
             # Write binary files for T, S and Mask at each time interval.
             # No need to take care of mask as MITgcm will do this.
             write_binary(RBsurf_t, rbcs_temp_file + '.' + str(t).zfill(10) + '.data', prec)
@@ -509,8 +517,8 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
         RBsurf_t = np.zeros(sizezyx)
         RBsurf_s = np.zeros(sizezyx)
         # generate 3D arrays for T, S at each time interval
-        RBsurf_t[0, :, :] = RBsurf_t_full[0, :, :]
-        RBsurf_s[0, :, :] = RBsurf_s_full[0, :, :]
+        RBsurf_t[0:4, :, :] = np.squeeze(RBsurf_t_tzyx[0, :, :, :])
+        RBsurf_s[0:4, :, :] = np.squeeze(RBsurf_s_tzyx[0, :, :, :])
         # Write binary files for T, S and Mask at each time interval.
         # No need to take care of mask as MITgcm will do this.
         write_binary(RBsurf_t, rbcs_temp_file, prec)
@@ -518,7 +526,10 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
 
     # Write binary Mask files
     Mask = np.zeros(sizezyx)
-    Mask[0,:,:]=1
+    Mask[0, :, :]=1
+    Mask[1, :, :]=0.75
+    Mask[2, :, :]=0.5
+    Mask[3, :, :]=0.25
 
     write_binary(Mask, rbcs_tempmask_file, prec)
     write_binary(Mask, rbcs_saltmask_file, prec)
@@ -605,18 +616,18 @@ print 'Building grid'
 grid = BasicGrid()
 
 print 'Creating topography'
-#make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
+make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
 print 'Reading info on forcing data'
 forcing = ForcingInfo()
 
 print 'Creating initial conditions'
-#make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', spinup=1, prec=64)
+make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', spinup=1, prec=64)
 
 print 'Creating restoring conditions at open boundaries'
-# note that forcing files have prec=32 by default when used in combination with EXF package (exf_iprec=32)
-#make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', spinup=1, prec=32)
+# note that OBCS forcing files have prec=32 by default when used in combination with EXF package (exf_iprec=32)
+make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', spinup=1, prec=32)
 
 print 'Creating restoring conditions at surface'
-# note that forcing files have prec=32 by default when used in combination with EXF package (exf_iprec=32)
-make_rbcs(grid, forcing, input_dir+'rbcs_surf_T.bin', input_dir+'rbcs_surf_S.bin', input_dir+'rbcs_mask_T.bin', input_dir+'rbcs_mask_S.bin', spinup=1, prec=32)
+# note that RBCS files are read with precision readBinaryPrec, as set in the data file
+make_rbcs(grid, forcing, input_dir+'rbcs_surf_T.bin', input_dir+'rbcs_surf_S.bin', input_dir+'rbcs_mask_T.bin', input_dir+'rbcs_mask_S.bin', spinup=1, prec=64)
