@@ -1,7 +1,7 @@
 # open boundaries
  &OBCS_PARM01
- OB_Iwest=360*1,
- OB_Jsouth=180*1,
+ OB_Iwest=480*1,
+ OB_Jsouth=240*1,
 
  useOBCSprescribe=.TRUE.,
  useOBCSsponge=.TRUE.,

@@ -59,8 +59,8 @@
  &PARM03
  niter0=0, 
  deltaT=120,
-# 1 month = 365/12 days
- endTime=15768000,
+# 2 years spinup - starttime: 01/01/1955
+ endTime=63158400,
  abEps=0.1,
  cAdjFreq=0,
 # monthly checkpoints
@@ -87,7 +87,8 @@
  ygOrigin = -700000,
  delX=240*1000,
  delY=480*1000,
- delZ=80*20.0,
+ delZ=4*10.0,
+      78*20.0,
       10*40.0,
  &
 

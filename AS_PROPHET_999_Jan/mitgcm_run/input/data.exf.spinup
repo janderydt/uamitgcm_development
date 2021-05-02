@@ -18,8 +18,9 @@
  &EXF_NML_OBCS
  obcsSstartdate1=19550101,
  obcsSstartdate2=0,   
- obcsSperiod=2629800, # assumes Gregorian calendar with fixed leap year cycle
+ # constant forcing
+ obcsSperiod=0,
  obcsWstartdate1=19550101,
  obcsWstartdate2=0,   
- obcsWperiod=2629800,
+ obcsWperiod=0,
  &
