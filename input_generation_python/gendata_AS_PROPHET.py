@@ -594,13 +594,16 @@ def make_clim(grid, forcing, clim_temp_file, clim_salt_file, spinup, prec):
               '2. Divide total simulation time into equal intervals assuming 12 months a year: ' , \
               simulationtime_seconds / simulationtime_months
 
+    CLIMsurf_t_tyx = np.squeeze(CLIMsurf_t_tyx)
+    CLIMsurf_s_tyx = np.squeeze(CLIMsurf_s_tyx)
+
     # Write binary files for T, S
     # No need to take care of mask as MITgcm will do this.
     write_binary(CLIMsurf_t_tyx, clim_temp_file, prec)
     write_binary(CLIMsurf_s_tyx, clim_salt_file, prec)
 
     # Remove variables from workspace
-    RBsurf_t_full, RBsurf_s_full, RBsurf_t, RBsurf_s = None, None, None, None
+    CLIMsurf_t_tyx, CLIMsurf_s_tyx = None, None
 
 # ============================================================================================
 # Creates initial T & S fields and calculates pressure loading
@@ -696,4 +699,5 @@ print 'Creating restoring conditions at open boundaries'
 print 'Creating restoring conditions at surface'
 # note that RBCS files are read with precision readBinaryPrec, as set in the data file
 #make_rbcs(grid, forcing, input_dir+'rbcs_surf_T.bin', input_dir+'rbcs_surf_S.bin', input_dir+'rbcs_mask_T.bin', input_dir+'rbcs_mask_S.bin', spinup=1, prec=64)
-make_clim(grid, forcing, input_dir+'clim_sst.bin', input_dir+'clim_sss.bin', spinup=1, prec=64)
+# climatology restoring files are read with precision exf_iprec=32
+make_clim(grid, forcing, input_dir+'clim_sst.bin', input_dir+'clim_sss.bin', spinup=1, prec=32)

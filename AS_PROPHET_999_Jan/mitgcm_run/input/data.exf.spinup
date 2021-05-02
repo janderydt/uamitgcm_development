@@ -14,7 +14,6 @@
  climsstperiod=0,
  climsstRepCycle=0,
  climsstTauRelax=3600,
- climsstmask='',
 #
  climsssfile='clim_sss.bin',
  climsssstartdate1=19550101,
@@ -23,7 +22,6 @@
  climsssperiod=0,
  climsssRepCycle=0,
  climsssTauRelax=3600,
- climsssmask='',
  &
 
  &EXF_NML_03
@@ -35,7 +33,7 @@
  &EXF_NML_OBCS
  obcsSstartdate1=19550101,
  obcsSstartdate2=0,   
- # constant forcing
+# constant forcing
  obcsSperiod=0,
  obcsWstartdate1=19550101,
  obcsWstartdate2=0,   

@@ -14,7 +14,6 @@
  climsstperiod=2629800,
  climsstRepCycle=0,
  climsstTauRelax=3600,
- climsstmask='',
 #
  climsssfile='clim_sss.bin',
  climsssstartdate1=19550101,
@@ -23,7 +22,6 @@
  climsssperiod=2629800,
  climsssRepCycle=0,
  climsssTauRelax=3600,
- climsssmask='',
  &
 
  &EXF_NML_03
