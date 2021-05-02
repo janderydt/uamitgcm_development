@@ -537,6 +537,71 @@ def make_rbcs(grid, forcing, rbcs_temp_file, rbcs_salt_file, rbcs_tempmask_file,
     # Remove variables from workspace
     RBsurf_t_full, RBsurf_s_full, RBsurf_t, RBsurf_s = None, None, None, None
 
+
+# ============================================================================================
+# Creates CLIMATOLOGY files for surface restoring
+def make_clim(grid, forcing, clim_temp_file, clim_salt_file, spinup, prec):
+    # define forcing data
+    T = xr.open_dataset(forcing.Tfile)
+    S = xr.open_dataset(forcing.Sfile)
+    lon, lat, z, time = T.LONGITUDE, T.LATITUDE, T.DEPTH, T.TIME
+    lon2d, lat2d = np.meshgrid(lon, lat)
+    lon1d = lon2d.ravel()
+    lat1d = lat2d.ravel()
+
+    # climatology is from forcing dataset at time 'starttime'
+    # slice full T and S arrays to correct time
+    starttime_p1 = starttime + relativedelta(
+        months=+1)  # shift starttime to first day of next month to correspond to time
+    # conventions in forcing data
+    forcingtime = pd.to_datetime(time.TIME.values, format='%Y-%m-%d')
+    startIndex = np.where(starttime_p1 == forcingtime)[0]  # find index of starttime within time array of forcing data
+
+    # Now loop through time dimension of forcing data and extract T & S
+    if spinup:  # if spinup then only save the first time slice
+        nt = 1
+    else:
+        nt = np.shape(time)[0]
+
+    sizetyx = (nt, grid.ny, grid.nx)
+
+    # New T & S arrays have dimensions (nt, ny, nx),
+    # The time slices in the forcing data correspond to T & S at the end of each calendar month, averaged over
+    # the preceding month.
+    # Horizontal slices are regridded to the local MITgcm grid
+    k = 0  # a dummy index
+    CLIMsurf_t_tyx = np.zeros(sizetyx)  # define T & S arrays with correct dimensions
+    CLIMsurf_s_tyx = np.zeros(sizetyx)
+
+    for t in range(startIndex, startIndex + nt):
+        # slice full T and S arrays to top layer and time t
+            Tsurf_slice = T.isel(DEPTH=0, TIME=t)
+            Ssurf_slice = S.isel(DEPTH=0, TIME=t)
+            Tsurf = Tsurf_slice.THETA.values.ravel()
+            Ssurf = Ssurf_slice.SALT.values.ravel()
+            t_xx = interp_functions.horizontal_interp_nonan(lon1d, lat1d, grid.lon2d, grid.lat2d, Tsurf)
+            s_xx = interp_functions.horizontal_interp_nonan(lon1d, lat1d, grid.lon2d, grid.lat2d, Ssurf)
+            CLIMsurf_t_tyx[k, :, :] = t_xx
+            CLIMsurf_s_tyx[k, :, :] = s_xx
+            # print some info and step dummy index
+            print 'Done ', k + 1, ' out of ', nt
+            k += 1
+
+    print 'You have chosen to provide restoring files at the end of each month. Since OBCS needs a fixed' \
+              'restoring period, you will need to set OBCS.ForcingPeriod to one of the values below (whichever' \
+              'is most appropriate: \n' \
+              '1. Assuming a regular leap year cycle: OBCS.ForcingPeriod = 2629800 \n' \
+              '2. Divide total simulation time into equal intervals assuming 12 months a year: ' , \
+              simulationtime_seconds / simulationtime_months
+
+    # Write binary files for T, S
+    # No need to take care of mask as MITgcm will do this.
+    write_binary(CLIMsurf_t_tyx, clim_temp_file, prec)
+    write_binary(CLIMsurf_s_tyx, clim_salt_file, prec)
+
+    # Remove variables from workspace
+    RBsurf_t_full, RBsurf_s_full, RBsurf_t, RBsurf_s = None, None, None, None
+
 # ============================================================================================
 # Creates initial T & S fields and calculates pressure loading
 def make_ics(grid, forcing, ini_temp_file, ini_salt_file, pload_file, spinup, prec):
@@ -616,18 +681,19 @@ print 'Building grid'
 grid = BasicGrid()
 
 print 'Creating topography'
-make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
+#make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
 print 'Reading info on forcing data'
 forcing = ForcingInfo()
 
 print 'Creating initial conditions'
-make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', spinup=1, prec=64)
+#make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', spinup=1, prec=64)
 
 print 'Creating restoring conditions at open boundaries'
 # note that OBCS forcing files have prec=32 by default when used in combination with EXF package (exf_iprec=32)
-make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', spinup=1, prec=32)
+#make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', spinup=1, prec=32)
 
 print 'Creating restoring conditions at surface'
 # note that RBCS files are read with precision readBinaryPrec, as set in the data file
-make_rbcs(grid, forcing, input_dir+'rbcs_surf_T.bin', input_dir+'rbcs_surf_S.bin', input_dir+'rbcs_mask_T.bin', input_dir+'rbcs_mask_S.bin', spinup=1, prec=64)
+#make_rbcs(grid, forcing, input_dir+'rbcs_surf_T.bin', input_dir+'rbcs_surf_S.bin', input_dir+'rbcs_mask_T.bin', input_dir+'rbcs_mask_S.bin', spinup=1, prec=64)
+make_clim(grid, forcing, input_dir+'clim_sst.bin', input_dir+'clim_sss.bin', spinup=1, prec=64)

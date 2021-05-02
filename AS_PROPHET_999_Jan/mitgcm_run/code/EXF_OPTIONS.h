@@ -204,8 +204,8 @@ C   unless to reproduce old results (obtained with inconsistent old code)
 #endif
 
 C-  Relaxation to monthly climatologies.
-#undef ALLOW_CLIMSST_RELAXATION
-#undef ALLOW_CLIMSSS_RELAXATION
+#define ALLOW_CLIMSST_RELAXATION
+#define ALLOW_CLIMSSS_RELAXATION
 
 C-  Allows to read-in (2-d) tidal geopotential forcing
 #undef EXF_ALLOW_TIDES

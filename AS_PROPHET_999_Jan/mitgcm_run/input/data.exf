@@ -7,6 +7,23 @@
  &
 
  &EXF_NML_02
+ climsstfile='clim_sst.bin',
+ climsststartdate1=19550101,
+ climsststartdate2=0,
+# assumes Gregorian calendar with fixed leap year cycle:
+ climsstperiod=2629800,
+ climsstRepCycle=0,
+ climsstTauRelax=3600,
+ climsstmask='',
+#
+ climsssfile='clim_sss.bin',
+ climsssstartdate1=19550101,
+ climsssstartdate2=0,
+# assumes Gregorian calendar with fixed leap year cycle:
+ climsssperiod=2629800,
+ climsssRepCycle=0,
+ climsssTauRelax=3600,
+ climsssmask='',
  &
 
  &EXF_NML_03
@@ -17,9 +34,11 @@
 
  &EXF_NML_OBCS
  obcsSstartdate1=19550101,
- obcsSstartdate2=0,   
- obcsSperiod=2629800, # assumes Gregorian calendar with fixed leap year cycle
+ obcsSstartdate2=0,
+# assumes Gregorian calendar with fixed leap year cycle:
+ obcsSperiod=2629800,
  obcsWstartdate1=19550101,
  obcsWstartdate2=0,   
  obcsWperiod=2629800,
  &
+
