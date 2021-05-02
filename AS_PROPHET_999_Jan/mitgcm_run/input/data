@@ -73,10 +73,10 @@
  dumpInitAndLast=.false.,
  monitorFreq=64800,
  monitorSelect=64800,
-# for time dependent open boundary conditions, activate the following 3 lines:
- periodicExternalForcing=.false.,
- externForcingPeriod=0.0,
- externForcingCycle=0.0,
+# for time dependent open boundary conditions, activate and specify the following 3 lines:
+# periodicExternalForcing=.true.,
+# externForcingPeriod=0.0,
+# externForcingCycle=0.0,
  &
 
 # Gridding parameters
