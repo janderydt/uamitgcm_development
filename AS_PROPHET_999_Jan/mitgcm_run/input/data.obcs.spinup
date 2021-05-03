@@ -1,0 +1,33 @@
+# open boundaries
+ &OBCS_PARM01
+ OB_Iwest=480*1,
+ OB_Jsouth=240*1,
+
+ useOBCSprescribe=.TRUE.,
+ useOBCSsponge=.TRUE.,
+ useOBCSbalance=.TRUE.,
+
+ OBStFile='OBSt_19550101spinup.bin',
+ OBSsFile='OBSs_19550101spinup.bin',
+ OBSuFile='OBSu_19550101spinup.bin',
+ OBSvFile='OBSv_19550101spinup.bin',
+
+ OBWtFile='OBWt_19550101spinup.bin',
+ OBWsFile='OBWs_19550101spinup.bin',
+ OBWuFile='OBWu_19550101spinup.bin',
+ OBWvFile='OBWv_19550101spinup.bin',
+
+ OBCS_balanceFacS = 1,
+ OBCS_balanceFacW = 1,
+ &
+
+ &OBCS_PARM02
+ &
+
+ &OBCS_PARM03
+ spongeThickness = 5,
+ Urelaxobcsinner = 21600,
+ Vrelaxobcsinner = 21600,
+ Urelaxobcsbound = 10800,
+ Vrelaxobcsbound = 10800,
+ &

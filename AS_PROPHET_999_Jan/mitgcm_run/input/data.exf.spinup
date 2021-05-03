@@ -4,21 +4,24 @@
 # *********************
 ##############################################################################
  &EXF_NML_01
+ exf_iprec=32,
+ exf_iprec_obcs=32,
+ exf_yftype='RL',
+ useExfYearlyFields=.FALSE.,
  &
 
  &EXF_NML_02
- climsstfile='clim_sst.bin',
+ climsstfile='clim_sst_19550101spinup.bin',
  climsststartdate1=19550101,
- climsststartdate2=0,
-# assumes Gregorian calendar with fixed leap year cycle:
+ climsststartdate2=00000000,
+# constant surface forcing:
  climsstperiod=0,
  climsstRepCycle=0,
  climsstTauRelax=3600,
 #
- climsssfile='clim_sss.bin',
+ climsssfile='clim_sss_19550101spinup.bin',
  climsssstartdate1=19550101,
- climsssstartdate2=0,
-# assumes Gregorian calendar with fixed leap year cycle:
+ climsssstartdate2=00000000,
  climsssperiod=0,
  climsssRepCycle=0,
  climsssTauRelax=3600,
@@ -32,10 +35,10 @@
 
  &EXF_NML_OBCS
  obcsSstartdate1=19550101,
- obcsSstartdate2=0,   
-# constant forcing
+ obcsSstartdate2=00000000,
+# constant boundary forcing:
  obcsSperiod=0,
  obcsWstartdate1=19550101,
- obcsWstartdate2=0,   
+ obcsWstartdate2=00000000,
  obcsWperiod=0,
  &

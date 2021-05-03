@@ -169,8 +169,22 @@ def make_topo (grid, ua_topo_file, bathy_file, draft_file, prec=64, dig_option='
 
     bathy =  interpolate.griddata((Y1d, X1d), bathy1d, (MITy1d, MITx1d), method='linear',
                                  fill_value=np.nan)
+
     bathy[np.isnan(bathy)] = 0
     bathy = np.reshape(bathy, (grid.ny, grid.nx))
+
+    if forcing_data == 'Holland':
+        print 'Adding Holland ice wall adjacent to Bear Peninsula'
+        iw = np.genfromtxt('/Volumes/mainJDeRydt/Antarctic_datasets/PIG_Thwaites_DotsonCrosson/MITgcm_AS/PHolland_2019/HollandIceWall_polarstereo.txt',delimiter=',')
+        iw_x, iw_y, iw_I = iw[:,0], iw[:,1], np.array([[],[]])
+        #find all target grid coordinates within 1 km buffer of ice wall
+        for kk in range(0,np.size(iw_x)):
+            L = np.sqrt((grid.x2d - iw_x[kk])**2 + (grid.y2d - iw_y[kk])**2)
+            I = np.where(L<1e3)
+            iw_I = np.concatenate((iw_I,I), axis=1)
+        iw_I = np.unique(iw_I, axis=1).astype('int')
+        bathy[iw_I[0], iw_I[1]] = 0
+        draft[iw_I[0], iw_I[1]] = 0
 
     if dig_option == 'none':
         print 'Not doing digging as per user request'
@@ -684,20 +698,20 @@ print 'Building grid'
 grid = BasicGrid()
 
 print 'Creating topography'
-#make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
+make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', input_dir+'shelfice_topo.bin', prec=64, dig_option='bathy')
 
 print 'Reading info on forcing data'
 forcing = ForcingInfo()
 
 print 'Creating initial conditions'
-#make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', spinup=1, prec=64)
+make_ics(grid, forcing, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'pload.mdjwf', spinup=1, prec=64)
 
 print 'Creating restoring conditions at open boundaries'
 # note that OBCS forcing files have prec=32 by default when used in combination with EXF package (exf_iprec=32)
-#make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', spinup=1, prec=32)
+make_obcs(grid, forcing, input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', spinup=0, prec=32)
 
 print 'Creating restoring conditions at surface'
 # note that RBCS files are read with precision readBinaryPrec, as set in the data file
 #make_rbcs(grid, forcing, input_dir+'rbcs_surf_T.bin', input_dir+'rbcs_surf_S.bin', input_dir+'rbcs_mask_T.bin', input_dir+'rbcs_mask_S.bin', spinup=1, prec=64)
 # climatology restoring files are read with precision exf_iprec=32
-make_clim(grid, forcing, input_dir+'clim_sst.bin', input_dir+'clim_sss.bin', spinup=1, prec=32)
+make_clim(grid, forcing, input_dir+'clim_sst.bin', input_dir+'clim_sss.bin', spinup=0, prec=32)
