@@ -274,7 +274,7 @@ def make_obcs (grid, forcing, obcs_temp_file_S, obcs_salt_file_S, obcs_uvel_file
     OBS_u = np.zeros((nt, grid.nz, np.shape(lon1dS)[1]))
     OBS_v = np.zeros((nt, grid.nz, np.shape(lon1dS)[1]))
 
-    for t in range(0,nt):
+    for t in range(0, nt):
         # Extract T, S, U & V arrays from the forcing data for reduced spatial domain, horizontal level and time
         T_slice = T.isel(LONGITUDE=range(Ilonmin, Ilonmax+1), LATITUDE=range(Ilatmin, Ilatmax+1), DEPTH=range(Izmin, Izmax+1), TIME=t)
         S_slice = S.isel(LONGITUDE=range(Ilonmin, Ilonmax+1), LATITUDE=range(Ilatmin, Ilatmax+1), DEPTH=range(Izmin, Izmax+1), TIME=t)
@@ -383,10 +383,10 @@ def make_obcs (grid, forcing, obcs_temp_file_S, obcs_salt_file_S, obcs_uvel_file
               '1. Assuming a regular leap year cycle: OBCS.ForcingPeriod = 2629800 \n'\
               '2. Divide total simulation time into equal intervals assuming 12 months a year: ', \
                 simulationtime_seconds/simulationtime_months
-        Int = np.zeros((1,1))
+        Int = np.zeros((1,nt))
 
     else:
-        Int = np.zeros((1, 1))
+        Int = np.zeros((1, nt))
 
     # Convert u and v from lat lon to ps
     Ull = np.reshape(OBW_u,(np.shape(Int)[1]*grid.nz, np.shape(lon1dW)[0]))
