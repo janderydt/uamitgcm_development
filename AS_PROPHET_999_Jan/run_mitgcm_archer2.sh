@@ -13,9 +13,9 @@
 # -A <Archer budget>
 ####################################################################
 
-# for debugging purposes, it might be faster to use the short queue, in which case
-# SBATCH --qos=short
-# SBATCH --reservation=shortqos
+## for debugging purposes, it might be faster to use the short queue, in which case
+## SBATCH --qos=short
+## SBATCH --reservation=shortqos
 
 # Setup the job environment (this module needs to be loaded before any other modules)
 module load epcc-job-env
