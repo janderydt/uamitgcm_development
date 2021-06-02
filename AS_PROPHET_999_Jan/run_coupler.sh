@@ -11,7 +11,7 @@
 ###############################################################
 # Run coupling script to exchange data between MITgcm and Ua.
 # Must pass the arguments
-# -A <Archer budget>
+# --export=ALL -A <Archer budget>
 ###############################################################
 
 module load epcc-job-env

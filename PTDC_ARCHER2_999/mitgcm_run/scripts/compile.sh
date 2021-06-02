@@ -7,7 +7,7 @@ module restore PrgEnv-gnu
 
 # USER VARIABLE
 # Path to MITgcm source code: recommend to use the one inside UaMITgcm
-MIT_SOURCE=$WORK/UaMITgcm/UaMITgcm_git/MITgcm_67g
+MIT_SOURCE=$WORK/UaMITgcm/UaMITgcm_source/MITgcm_67g
 MITGCM_ROOTDIR=$MIT_SOURCE
 
 # Path to file containing Fortran flags etc

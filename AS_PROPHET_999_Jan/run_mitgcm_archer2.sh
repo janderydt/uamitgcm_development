@@ -8,7 +8,7 @@
 ####################################################################
 # Run MITgcm.
 # Must pass the arguments
-# -export=MIT_DIR=<path to MITgcm case directory>,ACC=<Archer budget>
+# --export=ALL,MIT_DIR=<path to MITgcm case directory>,ACC=<Archer budget>
 # and
 # -A <Archer budget>
 ####################################################################
@@ -29,8 +29,8 @@ export TMPDIR=/work/n02/n02/`whoami`/SCRATCH
 export OMP_NUM_THREADS=1
 
 # Launch the parallel job
-# Using 200 MPI processes and 100 MPI processes per node
-# This is wasteful so consider optimizing to 256ish processes 
+# Using 240 MPI processes and 120 MPI processes per node
+# The runtime scales approx linearly with number of nodes. 2 Nodes is prob optimal here.
 srun --distribution=block:block --hint=nomultithread ./mitgcmuv
 OUT=$?
 

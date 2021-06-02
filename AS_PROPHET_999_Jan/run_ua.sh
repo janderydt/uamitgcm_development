@@ -1,20 +1,29 @@
-#!/bin/bash --login
-#PBS -l select=1
-#PBS -l walltime=02:00:00
-#PBS -j oe
-#PBS -m n
-#PBS -r n
-####################################################################
+#!/bin/sh
+#SBATCH --time=03:00:00
+#SBATCH --exclusive
+#SBATCH --nodes=1
+#SBATCH --tasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --partition=standard
+#SBATCH --qos=standard
+
+###############################################################
 # Run Ua.
 # Must pass the arguments
-# -v UA_DIR=<path to Ua executable directory>,ACC=<Archer budget>
+# --export=ALL,UA_DIR=<path to Ua executable directory>,ACC=<Archer budget>
 # and
 # -A <Archer budget>
-####################################################################
+###############################################################
+
+## for debugging purposes, it might be faster to use the short queue, in which case
+## SBATCH --qos=short
+## SBATCH --reservation=shortqos
+
+module load epcc-job-env
 
 # USER VARIABLE
 # Path to Matlab Compiler Runtime installation
-MCR=$WORK/MCR_2017a/v92/
+MCR=$WORK/MCR_2021a/v910
 
 # Make sure MCR cache (as defined in Ua_MCR.sh) exists
 # If you want the cache in a different location, modify it here AND in ua_run/Ua_MCR.sh
@@ -25,10 +34,9 @@ fi
 cd $PBS_O_WORKDIR
 echo 'Ua starts '`date` >> jobs.log
 
-module swap PrgEnv-intel PrgEnv-gnu
 cd $UA_DIR
 
-aprun -N 1 -n 1 ./Ua_MCR.sh $MCR 1>>matlab_std.out 2>>matlab_err.out
+srun --distribution=block:block --hint=nomultithread ./Ua_MCR.sh $MCR 1>>matlab_std.out 2>>matlab_err.out
 OUT=$?
 
 cd $PBS_O_WORKDIR
@@ -37,7 +45,7 @@ if [ $OUT == 0 ]; then
     touch ua_finished
     if [ -e mitgcm_finished ] ; then
         # Ua was the last one to finish
-	qsub -A $ACC run_coupler.sh
+       sbatch --export=ALL -A $ACC run_coupler.sh
     fi
     exit 0
 else
