@@ -29,8 +29,9 @@ export TMPDIR=/work/n02/n02/`whoami`/SCRATCH
 export OMP_NUM_THREADS=1
 
 # Launch the parallel job
-# Using 240 MPI processes and 120 MPI processes per node
-# The runtime scales approx linearly with number of nodes. 2 Nodes is prob optimal here.
+# Using 200 MPI processes and 100 MPI processes per node
+# This is somewhat wasteful, but the setup was inhereted from 32 core ARCHER1 nodes
+# The runtime scales approx linearly with number of nodes. 2 Nodes is prob optimal here
 srun --distribution=block:block --hint=nomultithread ./mitgcmuv
 OUT=$?
 
