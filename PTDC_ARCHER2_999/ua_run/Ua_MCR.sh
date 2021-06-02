@@ -31,7 +31,7 @@ else
       shift
   done
   export MCR_CACHE_ROOT=$WORK/mcr_cache
-  eval "\"${exe_dir}/test\"" $args
+  eval "\"${exe_dir}/Ua\"" $args
 fi
 exit
 
