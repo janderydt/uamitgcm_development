@@ -5,7 +5,7 @@
 # Setup below has been tested on ARCHER2 for MATLAB v2021a 
 MATLAB_PATH=/usr/share/modules/apps/MATLAB/R2021a
 # Path to UaMITgcm repository
-REPO_DIR=/home/UNN/wchm8/Documents/UaMITgcm_v2/UaMITgcm_source
+REPO_DIR=/home/UNN/wchm8/Documents/UaMITgcm_v2/UaMITgcm_archer2
 # Path to Ua build directory (will be created if it doesn't exist)
 UA_BUILD=./UaBuild
 # Path to configuration-specific Ua files to overwrite
