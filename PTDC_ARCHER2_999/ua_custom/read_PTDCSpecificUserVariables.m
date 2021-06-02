@@ -1,6 +1,6 @@
 function UserVar=read_PTDCSpecificUserVariables(UserVar)
 
-InputDataDirectory='/home/n02/n02/janryd69/work/UaMITgcm/Ua_InputData';
+InputDataDirectory='/work/n02/n02/janryd69/UaMITgcm/Ua_InputData';
 %InputDataDirectory='/media/janryd69/mainJDeRydt/UaMITgcm_v2/Ua_InputData';
 
 RunTable=readtable([InputDataDirectory,'/RunTable.csv']);
