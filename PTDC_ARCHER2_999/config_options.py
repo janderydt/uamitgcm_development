@@ -36,7 +36,6 @@ output_dir = work_dir+'output/'
 ### Archer budget to charge jobs to
 budget_code = 'n02-PROPHET'
 
-
 ###### 2. Coupling options ######
 
 ### Total length of simulation (months)

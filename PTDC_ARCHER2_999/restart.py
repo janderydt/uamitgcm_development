@@ -2,8 +2,8 @@
 
 import sys
 sys.path.insert(0,'./')
-sys.path.append('../../UaMITgcm_source/coupling')
-sys.path.append('../../UaMITgcm_source/tools')
+sys.path.append('../../UaMITgcm_archer2/coupling')
+sys.path.append('../../UaMITgcm_archer2/tools')
 import os
 import shutil
 
