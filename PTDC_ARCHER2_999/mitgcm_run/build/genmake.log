@@ -1,0 +1,133 @@
+Get compiler version using: ftn --version
+/opt/cray/pe/craype/2.7.2/bin/ftn
+GNU Fortran (GCC) 10.1.0 20200507 (Cray Inc.)
+Copyright (C) 2020 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+<-- compiler version ----
+
+running: check_fortran_compiler
+ ftn -fallow-argument-mismatch -O3 -funroll-loops -c genmake_tcomp.f
+ ftn -fallow-argument-mismatch -O3 -funroll-loops -o genmake_tcomp genmake_tcomp.o -L/opt/cray/pe/netcdf-hdf5parallel/4.7.4.0/gnu/9.1/lib -L/opt/cray/pe/mpich/8.0.15/ofi/gnu/9.1/lib
+ mpirun -np 1 ./genmake_tcomp
+/work/n02/n02/janryd69/UaMITgcm/UaMITgcm_source/MITgcm_67g/tools/genmake2: line 654: mpirun: command not found
+ --> set FC_CHECK='3'
+
+running: look_for_makedepend()
+ --> set MAKEDEPEND=$(TOOLSDIR)/xmakedepend
+
+running: check_HAVE_CLOC()
+ running: get_fortran_c_namemangling()
+ cc -c genmake_test.c
+genmake_test.c: In function 'tcall':
+genmake_test.c:1:31: warning: implicit declaration of function 'tsub' [-Wimplicit-function-declaration]
+    1 | void tcall( char * string ) { tsub( string ); }
+      |                               ^~~~
+ ftn -fallow-argument-mismatch -c genmake_tcomp.f
+ --> set FC_NAMEMANGLE='#define FC_NAMEMANGLE(X)  X ## _'
+cc -c genmake_tc_1.c
+ftn -fallow-argument-mismatch -o genmake_tc genmake_tc_2.f genmake_tc_1.o
+  HELLO WORLD   1622628878.3616719     
+ --> set HAVE_CLOC='t'
+
+running: check_HAVE_SETRLSTK()
+cc -c genmake_tc_1.c
+      program hello
+      external setrlstk
+      call setrlstk()
+      end
+ftn -fallow-argument-mismatch -o genmake_tc genmake_tc_2.f genmake_tc_1.o
+ --> set HAVE_SETRLSTK='t'
+
+running: check_HAVE_SIGREG()
+cc -c genmake_tc_1.c
+genmake_tc_1.c:11:44: warning: 'struct ucontext' declared inside parameter list will not be visible outside of this definition or declaration
+   11 |     unsigned int sn, siginfo_t  si, struct ucontext *sc )
+      |                                            ^~~~~~~~
+      program hello
+      integer anint
+      common /iv/ anint
+      external sigreg
+      call sigreg(anint)
+      end
+ftn -fallow-argument-mismatch -o genmake_tc genmake_tc_2.f genmake_tc_1.o
+ --> set HAVE_SIGREG='t'
+
+running: check_HAVE_STAT()
+cc -c genmake_tc_1.c
+      program hello
+      integer nbyte
+      call tfsize(nbyte)
+      print *," HELLO WORLD", nbyte
+      end
+ftn -fallow-argument-mismatch -o genmake_tc genmake_tc_2.f genmake_tc_1.o
+ --> set HAVE_STAT='t'
+
+running: check_netcdf_libs()
+===  genmake_tnc.F  >>>
+      program fgennc
+#include "netcdf.inc"
+      integer iret, ncid, xid
+      iret = nf_create('genmake_tnc.nc', NF_CLOBBER, ncid)
+      IF (iret .NE. NF_NOERR) write(*,*) NF_STRERROR(iret)
+      iret = nf_def_dim(ncid, 'X', 11, xid)
+      IF (iret .NE. NF_NOERR) write(*,*) NF_STRERROR(iret)
+      iret = nf_close(ncid)
+      IF (iret .NE. NF_NOERR) write(*,*) NF_STRERROR(iret)
+      end
+<<<  genmake_tnc.F  ===
+cat genmake_tnc.F |  cpp -traditional -P -DWORDLENGTH=4 -D_BYTESWAPIO -DHAVE_LAPACK -DNML_TERMINATOR -DALLOW_USE_MPI -DHAVE_SYSTEM -DHAVE_FDATE -DHAVE_ETIME_SBR -DHAVE_CLOC -DHAVE_SETRLSTK -DHAVE_SIGREG -DHAVE_STAT -I/opt/cray/pe/netcdf-hdf5parallel/4.7.4.0/gnu/9.1/include -I/opt/cray/pe/mpich/8.0.15/ofi/gnu/9.1/include
+ftn -fallow-argument-mismatch -O3 -funroll-loops -c genmake_tnc.f  \ 
+  &&  ftn -fallow-argument-mismatch -O3 -funroll-loops -o genmake_tnc.o -L/opt/cray/pe/netcdf-hdf5parallel/4.7.4.0/gnu/9.1/lib -L/opt/cray/pe/mpich/8.0.15/ofi/gnu/9.1/lib
+/usr/bin/ld: genmake_tnc.o: in function `MAIN__':
+genmake_tnc.f:(.text+0x1c): undefined reference to `nf_create_'
+/usr/bin/ld: genmake_tnc.f:(.text+0x43): undefined reference to `nf_def_dim_'
+/usr/bin/ld: genmake_tnc.f:(.text+0x59): undefined reference to `nf_close_'
+/usr/bin/ld: genmake_tnc.f:(.text+0xa4): undefined reference to `nf_strerror_'
+/usr/bin/ld: genmake_tnc.f:(.text+0x102): undefined reference to `nf_strerror_'
+/usr/bin/ld: genmake_tnc.f:(.text+0x160): undefined reference to `nf_strerror_'
+collect2: error: ld returned 1 exit status
+
+==> try again with added '-lnetcdf'
+cat genmake_tnc.F |  cpp -traditional -P -DWORDLENGTH=4 -D_BYTESWAPIO -DHAVE_LAPACK -DNML_TERMINATOR -DALLOW_USE_MPI -DHAVE_SYSTEM -DHAVE_FDATE -DHAVE_ETIME_SBR -DHAVE_CLOC -DHAVE_SETRLSTK -DHAVE_SIGREG -DHAVE_STAT -I/opt/cray/pe/netcdf-hdf5parallel/4.7.4.0/gnu/9.1/include -I/opt/cray/pe/mpich/8.0.15/ofi/gnu/9.1/include > genmake_tnc.f \ 
+ &&  ftn -fallow-argument-mismatch -O3 -funroll-loops -c genmake_tnc.f \ 
+ &&  ftn -fallow-argument-mismatch -O3 -funroll-loops -o genmake_tnc genmake_tnc.o -L/opt/cray/pe/netcdf-hdf5parallel/4.7.4.0/gnu/9.1/lib -L/opt/cray/pe/mpich/8.0.15/ofi/gnu/9.1/lib -lnetcdf
+/usr/bin/ld: genmake_tnc.o: in function `MAIN__':
+genmake_tnc.f:(.text+0x1c): undefined reference to `nf_create_'
+/usr/bin/ld: genmake_tnc.f:(.text+0x43): undefined reference to `nf_def_dim_'
+/usr/bin/ld: genmake_tnc.f:(.text+0x59): undefined reference to `nf_close_'
+/usr/bin/ld: genmake_tnc.f:(.text+0xa4): undefined reference to `nf_strerror_'
+/usr/bin/ld: genmake_tnc.f:(.text+0x102): undefined reference to `nf_strerror_'
+/usr/bin/ld: genmake_tnc.f:(.text+0x160): undefined reference to `nf_strerror_'
+collect2: error: ld returned 1 exit status
+
+==> try again with added '-lnetcdff -lnetcdf'
+cat genmake_tnc.F |  cpp -traditional -P -DWORDLENGTH=4 -D_BYTESWAPIO -DHAVE_LAPACK -DNML_TERMINATOR -DALLOW_USE_MPI -DHAVE_SYSTEM -DHAVE_FDATE -DHAVE_ETIME_SBR -DHAVE_CLOC -DHAVE_SETRLSTK -DHAVE_SIGREG -DHAVE_STAT -I/opt/cray/pe/netcdf-hdf5parallel/4.7.4.0/gnu/9.1/include -I/opt/cray/pe/mpich/8.0.15/ofi/gnu/9.1/include > genmake_tnc.f \ 
+ &&  ftn -fallow-argument-mismatch -O3 -funroll-loops -c genmake_tnc.f \ 
+ &&  ftn -fallow-argument-mismatch -O3 -funroll-loops -o genmake_tnc genmake_tnc.o -L/opt/cray/pe/netcdf-hdf5parallel/4.7.4.0/gnu/9.1/lib -L/opt/cray/pe/mpich/8.0.15/ofi/gnu/9.1/lib -lnetcdf
+check_netcdf: successful
+ --> set HAVE_NETCDF='t'
+
+running: check_lapack_libs()
+===  genmake_tla.F  >>>
+      program fgenla
+      integer info
+      integer ipiv( 2 )
+      double precision ab( 4, 2 ), b( 2 )
+      data ab / 0., 0., 1., 2., 0., 2., 1., 0. /
+      data b / 1., 1. /
+      call dgbsv( 2, 1, 1, 1, ab, 4, ipiv, b, 2, info )
+      IF (info .NE. 0) write(*,*) 'Error:', info
+      write(*,*) b
+      end
+<<<  genmake_tla.F  ===
+cat genmake_tla.F |  cpp -traditional -P -DWORDLENGTH=4 -D_BYTESWAPIO -DHAVE_LAPACK -DNML_TERMINATOR -DALLOW_USE_MPI -DHAVE_SYSTEM -DHAVE_FDATE -DHAVE_ETIME_SBR -DHAVE_CLOC -DHAVE_SETRLSTK -DHAVE_SIGREG -DHAVE_STAT -DHAVE_NETCDF -I/opt/cray/pe/netcdf-hdf5parallel/4.7.4.0/gnu/9.1/include -I/opt/cray/pe/mpich/8.0.15/ofi/gnu/9.1/include
+ftn -fallow-argument-mismatch -O3 -funroll-loops -c genmake_tla.f  \ 
+  &&  ftn -fallow-argument-mismatch -O3 -funroll-loops -o genmake_tla.o -L/opt/cray/pe/netcdf-hdf5parallel/4.7.4.0/gnu/9.1/lib -L/opt/cray/pe/mpich/8.0.15/ofi/gnu/9.1/lib -lnetcdff -lnetcdf
+check_lapack: successful
+ --> set HAVE_LAPACK='t'
+
+running: check_HAVE_FLUSH()
+  check_HAVE_FLUSH: successful
+ --> set HAVE_FLUSH='t'

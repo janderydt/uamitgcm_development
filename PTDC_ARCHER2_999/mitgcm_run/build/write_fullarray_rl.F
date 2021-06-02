@@ -1,0 +1,1 @@
+/work/n02/n02/janryd69/UaMITgcm/UaMITgcm_source/MITgcm_67g/pkg/debug/write_fullarray_rl.F

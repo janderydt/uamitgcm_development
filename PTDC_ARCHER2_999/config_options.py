@@ -5,7 +5,7 @@
 ###### 1. Server workflow options ######
 
 ### Experiment name, this will be stamped on some files
-expt_name = 'PTDC_666'
+expt_name = 'PTDC_825'
 
 ### Specify how to run Ua. 2 options:
 ### 'compiled': using Matlab Compiler Runtime, with an executable
@@ -27,7 +27,7 @@ ua_output_format = 'matlab'
 work_dir = '/work/n02/n02/janryd69/UaMITgcm/cases/'+expt_name+'/'
 
 ### Path to the MITgcm case directory (containing run/, input/, etc.)
-mit_case_dir = work_dir+'mitgcm_run/'
+mit_case_dir = work_dir+'mitgcm_run'
 ### Path to the Ua directory containing executable
 ua_exe_dir = work_dir+'ua_run/'
 ### Path to the directory to centrally gather output
@@ -102,7 +102,7 @@ pload_option = 'nearest'
 
 ### The next two variables only matter if pload_option = 'constant'.
 ### Set the constant temperature (C) and salinity (psu) to use.
-pload_temp = -1.
+pload_temp = -1.0
 pload_salt = 34.2
 
 ### Does the first Ua segment start from a restart file
@@ -111,6 +111,8 @@ ua_ini_restart = True
 
 
 ###### 3. MITgcm parameters ######
+
+coordinates = 'xy'
 
 ### Does your configuration of MITgcm include sea ice?
 use_seaice = False
@@ -129,9 +131,9 @@ use_ini_deltaTmom = False
 ### to find what they have been set to by default.
 deltaT = 120
 hFacMin = 0.05
-hFacMinDr = 0.
+hFacMinDr = 0.0
 readBinaryPrec = 64
-rhoConst = 1024.
+rhoConst = 1024
 eosType = 'MDJWF'
 ### The following four variables only matter if eosType='LINEAR'.
 ### Note that Tref and Sref in input/data will be multiplied by
@@ -139,7 +141,7 @@ eosType = 'MDJWF'
 ### (eg set Tref: -1. instead of 36*-1.)
 tAlpha = 3.733e-5
 sBeta = 7.843e-4
-Tref = -1.
+Tref = -1.0
 Sref = 34.2
 ### Number of vertical sea ice layers; match SEAICE_multDim in data.seaice.
 ### Only matters if use_seaice=True.
