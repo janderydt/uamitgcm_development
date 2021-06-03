@@ -39,10 +39,10 @@ cd $SLURM_SUBMIT_DIR
 if [ $OUT == 0 ]; then
     echo 'MITgcm ends '`date` >> jobs.log
     touch mitgcm_finished
-    #if [ -e ua_finished ]; then
+    if [ -e ua_finished ]; then
         # MITgcm was the last one to finish
-        #sbatch -A $ACC run_coupler.sh
-    #fi
+        sbatch --export ALL -A $ACC run_coupler.sh
+    fi
     exit 0
 else
     echo 'Error in MITgcm '`date` >> jobs.log
