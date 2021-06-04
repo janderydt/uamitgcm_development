@@ -41,7 +41,7 @@ if [ $OUT == 0 ]; then
     touch ua_finished
     if [ -e mitgcm_finished ] ; then
         # Ua was the last one to finish
-	sbatch --export ALL -A $ACC run_coupler.sh
+	sbatch --export=ALL -A $ACC run_coupler.sh
     fi
     exit 0
 else
