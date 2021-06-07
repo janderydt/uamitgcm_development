@@ -166,6 +166,7 @@ CtrlVar.AdaptMeshRunStepInterval=50 ; % remesh whenever mod(Itime,CtrlVar.AdaptM
 CtrlVar.doAdaptMeshPlots=0; 
 
 %%
+CtrlVar.ThicknessConstraintsItMax=1;
 CtrlVar.ThicknessConstraints=1;
 CtrlVar.ResetThicknessToMinThickness=0;  % change this later on
 CtrlVar.ThickMin=1;
