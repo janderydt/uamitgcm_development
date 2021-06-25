@@ -239,7 +239,8 @@ C--  get velocities from topdr formulation
            Kp1 = K+1
 
            IF (K.lt.Nr) then
-            drKp1 = max (drKp1, 0. _d 0)
+            drKp1 = drF(K)*(1. _d 0-_hFacW(I,J,K,bi,bj)) 
+	    drKp1 = max (drKp1, 0. _d 0)
             recip_drLoc = 1.0 / 
      &       (drF(K)*_hFacW(I,J,K,bi,bj)+drKp1)
             u_topdr(I,J,bi,bj) = 
