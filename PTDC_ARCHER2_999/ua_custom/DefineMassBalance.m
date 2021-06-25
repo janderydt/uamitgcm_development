@@ -74,6 +74,6 @@ ab(I)=0;
 ab(LakeNodes)=0;
 
 h=s-b;
-I=(h<CtrlVar.ThickMin & ab<0); ab(I)=0;  dabdh(I)=0;% do not melt ice shelf away where ice thickness is less than 1m.
+I=(h<CtrlVar.ThickMin+0.5 & ab<0); ab(I)=0;  dabdh(I)=0;% do not melt ice shelf away where ice thickness is less than 1m.
 
 end
