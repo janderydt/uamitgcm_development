@@ -5,7 +5,7 @@
 ###### 1. Server workflow options ######
 
 ### Experiment name, this will be stamped on some files
-expt_name = 'PTDC_825'
+expt_name = 'PTDC_999'
 
 ### Specify how to run Ua. 2 options:
 ### 'compiled': using Matlab Compiler Runtime, with an executable
@@ -24,7 +24,8 @@ ua_output_format = 'matlab'
 
 # Optional base directory to simplify definition of directories below
 # This variable won't be read by the coupler, so you don't have to use it.
-work_dir = '/work/n02/n02/janryd69/UaMITgcm/cases/'+expt_name+'/'
+#work_dir = '/work/n02/n02/janryd69/UaMITgcm/cases/'+expt_name+'/'
+work_dir = '/Volumes/mainJDeRydt/UaMITgcm_v2/cases/'+expt_name+'/'
 
 ### Path to the MITgcm case directory (containing run/, input/, etc.)
 mit_case_dir = work_dir+'mitgcm_run'
