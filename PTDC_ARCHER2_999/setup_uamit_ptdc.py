@@ -9,6 +9,8 @@ from scipy.io import loadmat
 import sys
 import shutil
 import os
+import psutil
+import gc
 # Get mitgcm_python in the path
 sys.path.append('../../UaMITgcm_archer2/tools/')
 sys.path.append('../../UaMITgcm_archer2/coupling/')
@@ -37,7 +39,7 @@ hFacMinDr = 0.
 
 # Some additional stuff about the forcing
 obcs_forcing_data = 'Kimura' # either 'Kimura' or 'Holland'
-constant_forcing = True# False # if set to True, the forcing from options.startDate+options.spinup_time will be taken
+constant_forcing = False# False # if set to True, the forcing from options.startDate+options.spinup_time will be taken
 
 # read information about startDates, spinup time and simulation time from the options
 options = Options()
@@ -96,9 +98,9 @@ class OBCSForcingArray:
             endForcing = int(np.where((self.years==self.BC['year'][-1,-1])&(self.months==self.BC['month'][-1,-1]))[0])
             self.years[endForcing+1:]=fixed_startyear
             self.months[endForcing+1:]=fixed_startmonth
-    ##np.set_printoptions(threshold=np.inf)
-    ##print self.years
-    ##print self.months
+            np.set_printoptions(threshold=np.inf)
+            print(self.years)
+            print(self.months)
 
         else:
             print('Time-varying OBCS forcing turned ON')
@@ -134,7 +136,8 @@ class OBCSForcingArray:
                 # calculate how many years need adding to the timeseries
                 nyears = np.amax([self.years[-1] - self.BC['year'][:,-1], 0])
                 # calculate how many additional full cycles of the input dataset are required to cover the requested simulation times
-                ncycles = np.int(np.ceil(nyears/(self.BC['year'][:,-1]-self.BC['year'][:,startIndex+spinup])))
+                ncycles = np.int(np.ceil(nyears/(self.BC['year'][:,-1]-self.BC['year'][:,startIndex+spinup])))+1
+        print(str(ncycles)+' cycles required')
 
         n=1
         Theta = np.append(Theta_spinup,Theta_cyclic,axis=2)
@@ -142,37 +145,16 @@ class OBCSForcingArray:
             n += 1
             Theta = np.append(Theta,Theta_cyclic,axis=2)
 
-        n=1
-        Salt = np.append(Salt_spinup,Salt_cyclic,axis=2)
-        while n < ncycles:
-            n += 1
-            Salt = np.append(Salt,Salt_cyclic,axis=2)
-
-        n=1
-        Ups = np.append(Ups_spinup,Ups_cyclic,axis=2)
-        while n < ncycles:
-            n += 1
-            Ups = np.append(Ups,Ups_cyclic,axis=2)
-
-        n=1
-        Vps = np.append(Vps_spinup,Vps_cyclic,axis=2)
-        while n < ncycles:
-            n += 1
-            Vps = np.append(Vps,Vps_cyclic,axis=2)
-
         if constant_forcing:
             #print 'constant forcing - nothing to add'
             #add constant constant forcing
             IndexConstantForcing = int(np.where((self.BC['year'][-1,:]==fixed_startyear)&(self.BC['month'][-1,:]==fixed_startmonth))[0])
             Theta = np.append(Theta,np.expand_dims(self.BC['Theta'][:,:,IndexConstantForcing],2),axis=2)
-            Salt = np.append(Salt,np.expand_dims(self.BC['Salt'][:,:,IndexConstantForcing],2),axis=2)
-            Ups = np.append(Ups,np.expand_dims(self.BC['Ups'][:,:,IndexConstantForcing],2),axis=2)
-            Vps = np.append(Vps,np.expand_dims(self.BC['Vps'][:,:,IndexConstantForcing],2),axis=2)
             months = np.append(month_spinup,month_cyclic)
             self.BC['month'] = np.append(months,self.BC['month'][:,IndexConstantForcing])
             years = np.append(year_spinup,year_cyclic)
             self.BC['year'] = np.append(years,self.BC['year'][:,IndexConstantForcing])
-        else:   
+        else:
             monthstoappend = np.mod(month_cyclic[:,-1]+np.arange(month_cyclic.size*ncycles),12)+1
             months = np.append(month_spinup,month_cyclic)
             self.BC['month'] = np.append(months,monthstoappend)
@@ -181,13 +163,52 @@ class OBCSForcingArray:
             self.BC['year'] = np.append(years,yearstoappend)
 
         self.BC['Theta'] = Theta
-        Theta = None
+        del Theta
+        gc.collect()
+        print('assembled Theta')
+#        print(psutil.Process(os.getpid()).memory_info().rss / 1024 ** 2)       
+
+        n=1
+        Salt = np.append(Salt_spinup,Salt_cyclic,axis=2)
+        while n < ncycles:
+            n += 1
+            Salt = np.append(Salt,Salt_cyclic,axis=2)
+        
+        if constant_forcing:
+            Salt = np.append(Salt,np.expand_dims(self.BC['Salt'][:,:,IndexConstantForcing],2),axis=2)
+
         self.BC['Salt'] = Salt
-        Salt = None
+        del Salt
+        gc.collect()
+        print('assembled Salt')
+
+        n=1
+        Ups = np.append(Ups_spinup,Ups_cyclic,axis=2)
+        while n < ncycles:
+            n += 1
+            Ups = np.append(Ups,Ups_cyclic,axis=2)
+        
+        if constant_forcing:
+            Ups = np.append(Ups,np.expand_dims(self.BC['Ups'][:,:,IndexConstantForcing],2),axis=2)
+
         self.BC['Ups'] = Ups
-        Ups = None
+        del Ups
+        gc.collect()
+        print('assembled Ups')
+
+        n=1
+        Vps = np.append(Vps_spinup,Vps_cyclic,axis=2)
+        while n < ncycles:
+            n += 1
+            Vps = np.append(Vps,Vps_cyclic,axis=2)
+
+        if constant_forcing:
+            Vps = np.append(Vps,np.expand_dims(self.BC['Vps'][:,:,IndexConstantForcing],2),axis=2)
+
         self.BC['Vps'] = Vps
-        Vps = None
+        del Vps
+        gc.collect()
+        print('assembled Vps')
 
         print('Start/end time spinup: ',month_spinup[:,0][:],'/',year_spinup[:,0],' - ',month_spinup[:,-1],'/',year_spinup[:,-1],' (',spinup,' months)')
         print('Start/end time cyclic forcing: ',month_cyclic[:,0],'/',year_cyclic[:,0],' - ',month_cyclic[:,-1],'/',year_cyclic[:,-1])
