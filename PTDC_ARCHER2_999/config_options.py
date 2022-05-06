@@ -35,17 +35,19 @@ ua_exe_dir = work_dir+'ua_run/'
 output_dir = work_dir+'output/'
 
 ### Archer budget to charge jobs to
-budget_code = 'n02-PROPHET'
+#budget_code = 'n02-NER000719'
+#budget_code = 'n02-PROPHET'
+budget_code = 'n02-TiPACCs'
 
 ###### 2. Coupling options ######
 
 ### Total length of simulation (months)
-total_time = 276
+total_time = 9096
 ### Length of ocean spinup period (months)
-spinup_time = 24
+spinup_time = 60
 ### Length of coupling timestep (months)
 ### total_time and spinup_time must be evenly divisible by couple_step
-couple_step = 3
+couple_step = 1
 
 ### Restart type for MITgcm. 2 options:
 ### 'zero': MITgcm will start from time 0 every coupling segment.
@@ -133,7 +135,7 @@ deltaT = 120
 hFacMin = 0.05
 hFacMinDr = 0.0
 readBinaryPrec = 64
-rhoConst = 1024
+rhoConst = 1028
 eosType = 'MDJWF'
 ### The following four variables only matter if eosType='LINEAR'.
 ### Note that Tref and Sref in input/data will be multiplied by

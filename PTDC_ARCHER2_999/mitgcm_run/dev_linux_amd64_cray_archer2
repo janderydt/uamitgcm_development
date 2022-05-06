@@ -1,0 +1,49 @@
+#!/bin/bash
+# In development - not usable.
+# To be used with the Cray compilers (PrgEnv-cray).
+
+CC='cc'
+FC='ftn'
+F90C='ftn'
+
+DEFINES='-DWORDLENGTH=4 -D_BYTESWAPIO -DHAVE_LAPACK -DNML_TERMINATOR'
+CPP='cpp -traditional -P'
+EXTENDED_SRC_FLAG='-Mextend'
+GET_FC_VERSION="-V"
+CHECK_FOR_LAPACK=t
+FC_CHECK=f
+INCLUDES='-I${NETCDF_DIR}/include -I${CRAY_MPICH_DIR}/include'
+LIBS='-L${NETCDF_DIR}/lib -L${CRAY_MPICH_DIR}/include/lib'
+
+NOOPTFLAGS='-O0'
+NOOPTFILES=''
+
+if text "x${MITGCM_FFLAGS}" != "x"; then
+	            # set flags in case_setup
+
+            FOPTIM=$MITGCM_FFLAGS
+
+elif test "x$IEEE" = x ; then   #- with optimisation:
+
+	# notes from ARcher opt file:
+	#   FOPTIM='-O2 -hfp3 -Oipa5' for less agressive optimization
+#   Be aware not all experiments pass the restart test with optimization
+
+    FOPTIM='-O3 -hfp3 -Oipa5'
+else
+    if test "x$DEVEL" = x ; then  #- no optimisation + IEEE :
+      FOPTIM='-O0  -hfp0'
+    else                          #- development/check options:
+      FOPTIM='-O0 -hfp0'
+      FOPTIM="$FOPTIM -g -Rbc -rm -hmsgs -hnegmsgs"
+    fi
+fi
+
+
+FFLAGS="$FFLAGS -em -ef -dynamic  -h pic"
+
+CFLAGS="$CFLAGS -h pic -dynamic"
+
+
+
+

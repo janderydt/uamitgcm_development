@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --time=04:00:00
+#SBATCH --time=01:00:00
 #SBATCH --exclusive
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=1
@@ -15,7 +15,7 @@
 # -A <Archer budget>
 ###############################################################
 
-module load epcc-job-env
+#module load epcc-job-env
 
 # USER VARIABLE
 # Path to Matlab Compiler Runtime installation

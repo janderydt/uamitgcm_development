@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --time=03:00:00
+#SBATCH --time=01:00:00
 #SBATCH --nodes=2
-#SBATCH --tasks-per-node=100
+#SBATCH --tasks-per-node=126
 #SBATCH --cpus-per-task=1
 #SBATCH --partition=standard
 #SBATCH --qos=standard
@@ -15,10 +15,13 @@
 
 ## for debugging purposes, it might be faster to use the short queue, in which case
 ## SBATCH --qos=short
+## instead of
+## SBATCH --qos=standard
+## and add
 ## SBATCH --reservation=shortqos
 
 # Setup the job environment (this module needs to be loaded before any other modules)
-module load epcc-job-env
+#module load epcc-job-env
 
 cd $SLURM_SUBMIT_DIR
 echo 'MITgcm starts '`date` >> jobs.log

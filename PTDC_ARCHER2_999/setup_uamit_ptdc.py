@@ -22,24 +22,24 @@ from set_parameters import Options
 
 # Global parameters
 # These are all things set in the input/data namelist.
-nx = 180    # first part of delX
+nx = 216    # first part of delX
 dx = 1300   # second part of delX
-ny = 360    # first part of delY
+ny = 378    # first part of delY
 dy = 1300   # second part of delY
-nz = [50, 10, 6]     # first part of delZ
-dz = [20, 40, 100]   # second part of delZ
+nz = [80, 10]   # first part of delZ
+dz = [20, 40]   # second part of delZ
 eosType = 'MDJWF'
 #Tref = -1.
 #Sref = 34.2
 #tAlpha = 3.733e-5
 #sBeta = 7.843e-4
-rhoConst = 1024.
+rhoConst = 1028.
 hFacMin = 0.05
 hFacMinDr = 0.
 
 # Some additional stuff about the forcing
 obcs_forcing_data = 'Kimura' # either 'Kimura' or 'Holland'
-constant_forcing = False# False # if set to True, the forcing from options.startDate+options.spinup_time will be taken
+constant_forcing = True# False # if set to True, the forcing from options.startDate+options.spinup_time will be taken
 
 # read information about startDates, spinup time and simulation time from the options
 options = Options()
@@ -394,22 +394,22 @@ make_topo(grid, './ua_custom/DataForMIT.mat', input_dir+'bathymetry.shice', inpu
 print('Creating initial and boundary conditions')
 make_ics_obcs(grid, obcs, input_dir+'T_ini.bin', input_dir+'S_ini.bin', input_dir+'OBSt.bin', input_dir+'OBSs.bin', input_dir+'OBSu.bin', input_dir+'OBSv.bin', input_dir+'OBWt.bin', input_dir+'OBWs.bin', input_dir+'OBWu.bin', input_dir+'OBWv.bin', input_dir+'pload.mdjwf', prec=64)
 
-print('Copy Ua restart file from Ua_InputData')
-with open('/home/n02/n02/janryd69/work/UaMITgcm/Ua_InputData/RunTable.csv', 'rb') as csvfile:
-    runs = csv.reader(csvfile, delimiter=',')
-    for row in runs:
-        if options.expt_name in row[:]:
-            filename = '/home/n02/n02/janryd69/work/UaMITgcm/Ua_InputData/'+row[0]+'_InverseRestartFile.mat'
-    if os.path.isfile(filename):
-        shutil.copyfile(filename,'./ua_run/'+options.expt_name+'-RestartFile.mat')
-        shutil.copyfile(filename,'./ua_custom/'+options.expt_name+'-RestartFile.mat')
-        print('Copied '+filename)
-    else:
-        print('Ua restart file '+filename+' not found')
-        sys.exit()
+#print('Copy Ua restart file from Ua_InputData')
+#with open('/Volumes/mainJDeRydt/UaMITgcm_v2/Ua_InputData/RunTable.csv', "rt") as csvfile:
+#    runs = csv.reader(csvfile, delimiter=',')
+#    for row in runs:
+#        if options.expt_name in row[:]:
+#            filename = '/Volumes/mainJDeRydt/UaMITgcm_v2/Ua_InputData/'+row[0]+'_InverseRestartFile.mat'
+#    if os.path.isfile(filename):
+#        shutil.copyfile(filename,'./ua_run/'+options.expt_name+'-RestartFile.mat')
+#        shutil.copyfile(filename,'./ua_custom/'+options.expt_name+'-RestartFile.mat')
+#        print('Copied '+filename)
+#    else:
+#        print('Ua restart file '+filename+' not found')
+#        sys.exit()
 
-print('Copy RefinedMesh_for_MITmask.mat to ua_run directory')
-shutil.copyfile('/home/n02/n02/janryd69/work/UaMITgcm/Ua_InputData/RefinedMesh_for_MITmask.mat','./ua_run/RefinedMesh_for_MITmask.mat')
+#print('Copy RefinedMesh_for_MITmask.mat to ua_run directory')
+#shutil.copyfile('/Volumes/mainJDeRydt/UaMITgcm_v2/Ua_InputData/RefinedMesh_for_MITmask.mat','./ua_run/RefinedMesh_for_MITmask.mat')
 
 
 

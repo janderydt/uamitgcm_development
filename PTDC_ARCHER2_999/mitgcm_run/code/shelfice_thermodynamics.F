@@ -93,6 +93,10 @@ C     drKp1, recip_drLoc
 #ifdef ALLOW_ISOMIP_TD
       _RL convertFW2SaltLoc
 #endif
+#ifdef ALLOW_DIAGNOSTICS
+      _RL tLocDiag(1-OLx:sNx+OLx,1-OLy:sNy+OLy,nSx,nSy)
+      _RL sLocDiag(1-OLx:sNx+OLx,1-OLy:sNy+OLy,nSx,nSy)
+#endif /* ALLOW_DIAGNOSTICS */
       _RL a0, a1, a2, b, c0
       _RL eps1, eps2, eps3, eps3a, eps4, eps5, eps6, eps7, eps8
       _RL cFac, rFac, dFac, fwflxFac, rFWinBL
@@ -109,6 +113,8 @@ C     drKp1, recip_drLoc
       PARAMETER ( shiTwoThirds = 0.66666666666666666666666666667D0 )
 #ifdef ALLOW_DIAGNOSTICS
       _RL uStarDiag(1-OLx:sNx+OLx,1-OLy:sNy+OLy,nSx,nSy)
+      _RL uLocDiag(1-OLx:sNx+OLx,1-OLy:sNy+OLy,nSx,nSy)
+      _RL vLocDiag(1-OLx:sNx+OLx,1-OLy:sNy+OLy,nSx,nSy)
 #endif /* ALLOW_DIAGNOSTICS */
 #endif /*SHI_ALLOW_GAMMAFRICT */
 
@@ -407,7 +413,11 @@ c    &           )*recip_drLoc
            u_tmp = halfRL*( uLoc(I,J) + uLoc(I+1,J) )
            v_tmp = halfRL*( vLoc(I,J) + vLoc(I,J+1) )
            velSq(I,J) = u_tmp*u_tmp + v_tmp*v_tmp
-          ENDDO
+#ifdef ALLOW_DIAGNOSTICS
+           uLocDiag(I,J,bi,bj) = u_tmp
+           vLocDiag(I,J,bi,bj) = v_tmp
+#endif /* ALLOW_DIAGNOSTICS */
+           ENDDO
          ENDDO
         ENDIF
 #endif /* SHI_ALLOW_GAMMAFRICT */
@@ -423,6 +433,16 @@ C--   to the surface
 #endif
          ENDDO
         ENDDO
+
+C--   save in-situ t and s for diagnostics
+#ifdef ALLOW_DIAGNOSTICS
+        DO J = 1, sNy
+         DO I = 1, sNx
+          tLocDiag(I,J,bi,bj) = tLoc(I,J)
+          sLocDiag(I,J,bi,bj) = sLoc(I,J)
+         ENDDO
+        ENDDO
+#endif /* ALLOW_DIAGNOSTICS */
 
 #ifdef SHI_ALLOW_GAMMAFRICT
         IF ( SHELFICEuseGammaFrict ) THEN
@@ -450,11 +470,15 @@ C            gammaTurb = MAX(0.D0, gammaTurb)
             ELSE
              gammaTurb = gammaTurbConst
             ENDIF
-            shiTransCoeffT(i,j,bi,bj) = MAX( zeroRL,
-     &           ustar/(gammaTurb + gammaTmoleT) )
-            shiTransCoeffS(i,j,bi,bj) = MAX( zeroRL,
-     &           ustar/(gammaTurb + gammaTmoleS) )
-           ENDIF
+C            shiTransCoeffT(i,j,bi,bj) = MAX( zeroRL,
+C     &           ustar/(gammaTurb + gammaTmoleT) )
+C            shiTransCoeffS(i,j,bi,bj) = MAX( zeroRL,
+C     &           ustar/(gammaTurb + gammaTmoleS) )
+             shiTransCoeffT(i,j,bi,bj) = MAX( zeroRL,
+     &            ustar*SHELFICEheatTransCoeff )
+             shiTransCoeffS(i,j,bi,bj) = MAX( zeroRL,
+     &            ustar*SHELFICEsaltTransCoeff )
+            ENDIF
           ENDDO
          ENDDO
         ENDIF
@@ -690,14 +714,14 @@ C     Transfer coefficients
        CALL DIAGNOSTICS_FILL(shiTransCoeffS,'SHIgammS',
      &      0,1,0,1,1,myThid)
 C     Boundary T & S
-       CALL DIAGNOSTICS_FILL(tLoc,'SHItLoc ',0,1,0,1,1,myThid)
-       CALL DIAGNOSTICS_FILL(sLoc,'SHIsLoc ',0,1,0,1,1,myThid)
+       CALL DIAGNOSTICS_FILL(tLocDiag,'SHItLoc ',0,1,0,1,1,myThid)
+       CALL DIAGNOSTICS_FILL(sLocDiag,'SHIsLoc ',0,1,0,1,1,myThid)
 C     Friction velocity
 #ifdef SHI_ALLOW_GAMMAFRICT
        IF ( SHELFICEuseGammaFrict ) THEN
         CALL DIAGNOSTICS_FILL(uStarDiag,'SHIuStar',0,1,0,1,1,myThid)
-        CALL DIAGNOSTICS_FILL(uLoc,'SHIuLoc ',0,1,0,1,1,myThid)
-        CALL DIAGNOSTICS_FILL(vLoc,'SHIvLoc ',0,1,0,1,1,myThid)
+        CALL DIAGNOSTICS_FILL(uLocDiag,'SHIuLoc ',0,1,0,1,1,myThid)
+        CALL DIAGNOSTICS_FILL(vLocDiag,'SHIvLoc ',0,1,0,1,1,myThid)
        ENDIF
 #endif /* SHI_ALLOW_GAMMAFRICT */
 #ifdef ALLOW_SHELFICE_REMESHING
