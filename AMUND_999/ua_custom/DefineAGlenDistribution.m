@@ -1,5 +1,5 @@
 function [UserVar,AGlen,n]=DefineAGlenDistribution(UserVar,CtrlVar,MUA,time,s,b,h,S,B,rho,rhow,GF)
-    
+
 persistent FAGlen
 
 if exist(CtrlVar.NameOfFileForReadingAGlenEstimate)~=2
@@ -17,3 +17,4 @@ else
     n = n(1);
 end
 end
+

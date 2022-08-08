@@ -1,7 +1,7 @@
 function UserVar=read_PTDCSpecificUserVariables(UserVar)
 
-InputDataDirectory='/work/n02/n02/janryd69/UaMITgcm/Ua_InputData';
-%InputDataDirectory='/media/janryd69/mainJDeRydt/UaMITgcm_v2/Ua_InputData';
+%InputDataDirectory='/work/n02/n02/janryd69/UaMITgcm/Ua_InputData';
+InputDataDirectory='/media/wchm8/mainJDeRydt/UaMITgcm_v2/Ua_InputData';
 
 RunTable=readtable([InputDataDirectory,'/RunTable.csv']);
 
@@ -34,6 +34,10 @@ switch RunTable{I(1),'GeometryInterpolants'}{:}
     case 'Bedmachine'
         UserVar.Geometry = 'Bedmachine';
         UserVar.GeometryInterpolants = [InputDataDirectory,'/GriddedInterpolants_sBh_Bedmachine.mat'];
+        UserVar.FirnInterpolants = 'Bedmachine';
+    case 'Bedmachine20200715'
+        UserVar.Geometry = 'Bedmachinev2';
+        UserVar.GeometryInterpolants = [InputDataDirectory,'/GriddedInterpolants_Bedmachine2020-07-15.mat'];
         UserVar.FirnInterpolants = 'Bedmachine';
     case 'Bedmachine_Bamber2009_modifiedThwaites'
         UserVar.Geometry = 'Bedmachine_Bamber2009_modifiedThwaites';

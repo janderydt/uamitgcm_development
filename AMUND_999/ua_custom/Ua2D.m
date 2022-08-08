@@ -1,7 +1,8 @@
 function UserVar=Ua2D(UserVar,CtrlVarOnInput,varargin)
 
-%% Driver for the 2HD ï¿½a model
+%% Driver for the 2HD Úa model
 % 
+
 
 
 if nargin==0
@@ -11,18 +12,16 @@ elseif nargin==1
     CtrlVarOnInput=[];
 end
 
+
+
 SetUaPath() %% 
 
-% Remove this check because it doesn't work with the compiler
-%if ~exist(fullfile(cd,'Ua2D_InitialUserInput.m'),'file')
-%    
-%    fprintf('The input-file Ua2D_InitialUserInput.m not found in the working directory (%s).\n',pwd)
-%    fprintf('This input-file is required for Ua to run.\n')
-%    return
-%    
-%end
 
 warning('off','MATLAB:triangulation:PtsNotInTriWarnId')
+warning('off','MATLAB:decomposition:SaveNotSupported')
+warning('off','MATLAB:decomposition:genericError')
+parfevalOnAll(gcp(), @warning, 0, 'off','MATLAB:decomposition:genericError');
+parfevalOnAll(gcp(), @warning, 0, 'off','MATLAB:decomposition:SaveNotSupported');
 
 %% initialize some variables
 RunInfo=UaRunInfo; 
@@ -33,38 +32,14 @@ Priors=PriorProbabilityDistribution;
 InvStartValues=InversionValues;
 InvFinalValues=InversionValues; 
 
-
+RunInfo.Forward.AdaptiveTimeSteppingTimeStepModifiedForOutputs=0;
 Lubvb=[];
 Ruv=[];
 
 WallTime0=tic;
 %% Clear any persistent variables
-clear AdaptiveTimeStepping
-clear AdaptMesh
-clear BCs2MLC
-clear CostFunctionValueAndGradient
-clear EleAverageInterpolate
-clear JGH
-clear NrOfIntegrationPoints
-clear LocalMeshRefinement
-clear MeshAdvanceRetreat
-clear Mesh2dEleSizeFunction
-clear multiWaitbar
-clear NewConjugatedGrad
-% User input files
-clear DefineSlipperyDistribution
-clear DefineAGlenDistribution
-clear DefineGeometry
-clear DefineInputsForInverseRun
-clear DefineDensities
-clear DefineDesiredEleSize
-clear DefineBoundaryConditions
-clear DefineMassBalance
-clear UaOutputs
-% Ua utilities
-clear PlotMeshScalarVariable 
-clear PlotFEmesh
-clear FindOrCreateFigure
+ClearPersistentUaVariables();
+
 
 %% Define CtrlVar
 
@@ -103,17 +78,8 @@ if  ~isempty(CtrlVarOnInput)
 
 end
 
+[UserVar,CtrlVar]=GetInitialInputs(UserVar,CtrlVar,varargin{:});
 
-% Get user-defined parameter values
-%  CtrlVar,UsrVar,Info,UaOuts
-% if nargin("Ua2D_InitialUserInput.m")>2
-%     [UserVar,CtrlVar,MeshBoundaryCoordinates]=Ua2D_InitialUserInput(UserVar,CtrlVar,varargin{:});
-% else
-[UserVar,CtrlVar,MeshBoundaryCoordinates]=Ua2D_InitialUserInput(UserVar,CtrlVar);
-%end
-
-CtrlVar.MeshBoundaryCoordinates=MeshBoundaryCoordinates;
-clearvars MeshBoundaryCoordinates;
 
 
 if  ~isempty(CtrlVarOnInput)
@@ -134,7 +100,7 @@ end
 
 
 
-% do some basic test on the vality of the CtrlVar fields
+% do some basic test on the vality of the CtrlVar fields, validate CtlrVar
 CtrlVar=CtrlVarValidityCheck(CtrlVar);
 
 
@@ -146,12 +112,15 @@ CtrlVar=CtrlVarValidityCheck(CtrlVar);
 % write out some basic information about the type of run selected
 PrintRunInfo(CtrlVar);
 RunInfo.Message="Start of Run";
+CtrlVar.RunInfoMessage=RunInfo.Message;
 RunInfo.File.Name=CtrlVar.Experiment+"-RunInfo.txt";
-if CtrlVar.Restart
-    RunInfo.File.fid = fopen(RunInfo.File.Name,'a');
-    fprintf(RunInfo.File.fid,'  Restart run starts on %s \n',datetime('now'));
-else
-    RunInfo.File.fid = fopen(RunInfo.File.Name,'w');
+if CtrlVar.WriteRunInfoFile
+    if CtrlVar.Restart
+        RunInfo.File.fid = fopen(RunInfo.File.Name,'a');
+        fprintf(RunInfo.File.fid,'  Restart run starts on %s \n',datetime('now'));
+    else
+        RunInfo.File.fid = fopen(RunInfo.File.Name,'w');
+    end
 end
 
 %% Get input data
@@ -161,7 +130,7 @@ if CtrlVar.InverseRun %  inverse run
         
         
         RunInfo.Message="Getting inputs for an inverse restart run";
-        CtrlVar.RunInfoMessage=RunInfo.Message(end);
+        CtrlVar.RunInfoMessage=RunInfo.Message;
         [UserVar,MUA,BCs,F,l,InvStartValues,Priors,Meas,BCsAdjoint,RunInfo]=...
             GetInputsForInverseRestartRun(UserVar,CtrlVar,RunInfo);
         
@@ -170,6 +139,7 @@ if CtrlVar.InverseRun %  inverse run
         
         RunInfo.Message="Getting inputs for a new inverse run";
         CtrlVar.RunInfoMessage=RunInfo.Message;
+        CtrlVar.CurrentRunStepNumber=1; 
         % First get the usual input for a forward run
         
         [UserVar,RunInfo,MUA,BCs,F,l]=GetInputsForForwardRun(UserVar,CtrlVar,RunInfo);
@@ -195,9 +165,19 @@ else
         
         % When reading the restart file the restart values of CtrlVar are all discarded,
         % however:
-        CtrlVar.time=CtrlVarInRestartFile.time;
+        CtrlVar.time=CtrlVarInRestartFile.time;   
         CtrlVar.RestartTime=CtrlVarInRestartFile.time;
-        CtrlVar.dt=CtrlVarInRestartFile.dt;
+       
+        
+        % Generally, I want dt used in the run to be the dt value in the restart file. However, it is possible that the restart file was
+        % generated in a previous time independent run where dt was not defined, but the restart run is time dependent and the user has defined
+        % dt in the DefineInitialInputs.m for that time dependent run. In that case I do want to use dt as defined in DefineInitialInputs.m
+        if ~(~CtrlVarInRestartFile.TimeDependentRun && CtrlVar.TimeDependentRun)  
+            % Generally the dt used should be the dt in the restart file. 
+            CtrlVar.dt=CtrlVarInRestartFile.dt;
+        end
+        
+        F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ; 
         CtrlVar.CurrentRunStepNumber=CtrlVarInRestartFile.CurrentRunStepNumber;
         
         clearvars time dt CurrentRunStepNumber
@@ -217,18 +197,20 @@ else
 end
 
 MUA=UpdateMUA(CtrlVar,MUA); % Just in case something about the def of MUA has changed since creation of restart files
-
+F.x=MUA.coordinates(:,1) ;  F.y=MUA.coordinates(:,2) ; F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ;  
 %% RunInfo initialisation
 RunInfo.Message="Start of Run";
-
+CtrlVar.RunInfoMessage=RunInfo.Message;
 RunInfo.File.Name=CtrlVar.Experiment+"-RunInfo.txt";
 
-if CtrlVar.Restart
-    if ~isnan(RunInfo.File.fid) ; fclose(RunInfo.File.fid) ; end
-    RunInfo.File.fid = fopen(RunInfo.File.Name,'a');
-    fprintf(RunInfo.File.fid,'  Restart run starts on %s \n',datetime('now'));
-else
-    RunInfo.File.fid = fopen(RunInfo.File.Name,'w');
+if CtrlVar.WriteRunInfoFile
+    if CtrlVar.Restart
+        if ~isnan(RunInfo.File.fid) ; fclose(RunInfo.File.fid) ; end
+        RunInfo.File.fid = fopen(RunInfo.File.Name,'a');
+        fprintf(RunInfo.File.fid,'  Restart run starts on %s \n',datetime('now'));
+    else
+        RunInfo.File.fid = fopen(RunInfo.File.Name,'w');
+    end
 end
 
 %%
@@ -248,9 +230,6 @@ CtrlVar.RunInfoMessage=RunInfo.Message;
 
 F.h=F.s-F.b;
 [F.b,F.s,F.h,F.GF]=Calc_bs_From_hBS(CtrlVar,MUA,F.h,F.S,F.B,F.rho,F.rhow); 
-%GF=GL2d(F.B,F.S,F.h,F.rhow,F.rho,MUA.connectivity,CtrlVar);
-
-
 
 % pointers to the elements of Boundary.Edges where u and v are fixed
 % Boundary.uFixedEdgesAllPtrs=logical(prod(double(ismember(Boundary.Edges,ufixednode)')));
@@ -266,12 +245,12 @@ if CtrlVar.doInverseStep   % -inverse
     
     RunInfo.Message="Start of inverse run.";
     CtrlVar.RunInfoMessage=RunInfo.Message;
-    
-    CtrlVar.UaOutputsInfostring='Start of inverse run';
-    CtrlVar.UaOutputsCounter=1;
+     CtrlVar.CurrentRunStepNumber=1; 
+    CtrlVar.DefineOutputsInfostring="Start of inverse run";
+    CtrlVar.DefineOutputsCounter=1;
     InvFinalValues=InversionValues;
-    fprintf(' Calling UaOutputs. UaOutputsInfostring=%s , UaOutputsCounter=%i \n ',CtrlVar.UaOutputsInfostring,CtrlVar.UaOutputsCounter)
-    UserVar=CreateUaOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
+    fprintf(' Calling DefineOutputs. DefineOutputsInfostring=%s , DefineOutputsCounter=%i \n ',CtrlVar.DefineOutputsInfostring,CtrlVar.DefineOutputsCounter)
+    UserVar=CreateOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
     
     
     %         [db,dc] = Deblurr2D(NaN,...
@@ -308,28 +287,29 @@ if CtrlVar.doInverseStep   % -inverse
         PlotResultsFromInversion(UserVar,CtrlVar,MUA,BCs,F,l,F.GF,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
     end
     
-    CtrlVar.UaOutputsInfostring='End of Inverse Run';
-    CtrlVar.UaOutputsCounter=CtrlVar.UaOutputsCounter+1;
-    fprintf(' Calling UaOutputs. UaOutputsInfostring=%s , UaOutputsCounter=%i \n ',CtrlVar.UaOutputsInfostring,CtrlVar.UaOutputsCounter)
-    UserVar=CreateUaOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
+    CtrlVar.DefineOutputsInfostring="End of Inverse Run";
+    CtrlVar.DefineOutputsCounter=CtrlVar.DefineOutputsCounter+1;
+    fprintf(' Calling DefineOutputs. DefineOutputsInfostring=%s , DefineOutputsCounter=%i \n ',CtrlVar.DefineOutputsInfostring,CtrlVar.DefineOutputsCounter)
+    UserVar=CreateOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
 
     SayGoodbye(CtrlVar,RunInfo);
     return  % This is the end of the (inverse) run
     
 end
 
-%% UaOutputs
-CtrlVar.UaOutputsCounter=0;
-% if (ReminderFraction(CtrlVar.time,CtrlVar.UaOutputsDt)<1e-5 || CtrlVar.UaOutputsDt==0 )
-%     CtrlVar.UaOutputsInfostring='First call';
-%     CtrlVar.UaOutputsCounter=CtrlVar.UaOutputsCounter+1;
+%% DefineOutputs
+CtrlVar.DefineOutputsCounter=0;
+%% Remove because incompatible with irregular UaOutputs interval in UaMITgcm
+% if (ReminderFraction(CtrlVar.time,CtrlVar.DefineOutputsDt)<1e-5 || CtrlVar.DefineOutputsDt==0 )
+%     CtrlVar.DefineOutputsInfostring="First call";
+%     CtrlVar.DefineOutputsCounter=CtrlVar.DefineOutputsCounter+1;
 %     
-%     fprintf(' Calling UaOutputs. UaOutputsInfostring=%s , UaOutputsCounter=%i \n ',CtrlVar.UaOutputsInfostring,CtrlVar.UaOutputsCounter)
-%     UserVar=CreateUaOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
+%     fprintf(' Calling DefineOutputs. DefineOutputsInfostring=%s , DefineOutputsCounter=%i \n ',CtrlVar.DefineOutputsInfostring,CtrlVar.DefineOutputsCounter)
+%     UserVar=CreateOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
 %     
-%     if CtrlVar.UaOutputsCounter>=CtrlVar.UaOutputsMaxNrOfCalls
-%         fprintf(' Exiting because number of calls to UaOutputs (%i) >= CtrlVar.UaOutputsMaxNrOfCalls (%i) /n',...
-%             CtrlVar.UaOutputsCounter,CtrlVar.UaOutputsMaxNrOfCalls)
+%     if CtrlVar.DefineOutputsCounter>=CtrlVar.DefineOutputsMaxNrOfCalls
+%         fprintf(' Exiting because number of calls to DefineOutputs (%i) >= CtrlVar.DefineOutputsMaxNrOfCalls (%i) /n',...
+%             CtrlVar.DefineOutputsCounter,CtrlVar.DefineOutputsMaxNrOfCalls)
 %         return
 %     end
 % end
@@ -339,13 +319,14 @@ CtrlVar.UaOutputsCounter=0;
 CtrlVar.CurrentRunStepNumber0=CtrlVar.CurrentRunStepNumber;
 
 
-RunInfo.Message="Run Step Loop.";
-CtrlVar.RunInfoMessage=RunInfo.Message;
+
 RunInfo.Forward.IterationsTotal=0; 
 RunInfo.Forward.Converged=true; 
 %%  RunStep Loop
 while 1
     
+    RunInfo.Message="-RunStepLoop-"; % While within run-step loop the Message field always contains the string "-RunStepLoop-"
+    CtrlVar.RunInfoMessage=RunInfo.Message;
     RunInfo.CPU.WallTime=duration(0,0,toc(WallTime0));
     
     %% check run-step stop criteria
@@ -362,7 +343,7 @@ while 1
         break
     end
     
-    if CtrlVar.TimeDependentRun && CtrlVar.dt <= CtrlVar.dtmin % I limit dt some small value for numerical reasons
+    if CtrlVar.TimeDependentRun && CtrlVar.dt < CtrlVar.dtmin  && ~RunInfo.Forward.AdaptiveTimeSteppingTimeStepModifiedForOutputs
         fprintf('Exiting run-step loop because time step too small (%g<%g)\n',CtrlVar.dt,CtrlVar.dtmin)
         TempFile=CtrlVar.Experiment+"-UaDumpTimeStepTooSmall.mat";
         fprintf(CtrlVar.fidlog,' saving variables in %s \n ',TempFile) ;
@@ -389,6 +370,22 @@ while 1
     
     
     CtrlVar.CurrentRunStepNumber=CtrlVar.CurrentRunStepNumber+1;
+    
+    nRunInfo=numel(RunInfo.Forward.uvhIterations) ;
+    if nRunInfo < CtrlVar.CurrentRunStepNumber
+        
+        RunInfo.Forward.time=[RunInfo.Forward.time;RunInfo.Forward.time+NaN];
+        RunInfo.Forward.dt=[RunInfo.Forward.dt;RunInfo.Forward.dt+NaN];
+        RunInfo.Forward.uvhIterations=[RunInfo.Forward.uvhIterations;RunInfo.Forward.uvhIterations+NaN];
+        RunInfo.Forward.uvhResidual=[RunInfo.Forward.uvhResidual;RunInfo.Forward.uvhResidual+NaN];
+        RunInfo.Forward.uvhBackTrackSteps=[RunInfo.Forward.uvhBackTrackSteps;RunInfo.Forward.uvhBackTrackSteps+NaN];
+        RunInfo.Forward.uvhActiveSetIterations=[RunInfo.Forward.uvhActiveSetIterations;RunInfo.Forward.uvhActiveSetIterations+NaN];
+        RunInfo.Forward.uvhActiveSetCyclical=[RunInfo.Forward.uvhActiveSetCyclical;RunInfo.Forward.uvhActiveSetCyclical+NaN];
+        RunInfo.Forward.uvhActiveSetConstraints=[RunInfo.Forward.uvhActiveSetConstraints;RunInfo.Forward.uvhActiveSetConstraints+NaN];
+        
+    end
+    
+    
     if CtrlVar.InfoLevel >= 1 
         fprintf('\n \t ----------------------------------------> Current run step: %i <-------------------------------\n',CtrlVar.CurrentRunStepNumber) ;  
     end
@@ -399,21 +396,21 @@ while 1
     end
     
     MUA=UpdateMUA(CtrlVar,MUA);
-    
+    F.x=MUA.coordinates(:,1) ;  F.y=MUA.coordinates(:,2) ; 
     %% -adapt time step   automated time stepping 
     if CtrlVar.TimeDependentRun
-        %[RunInfo,CtrlVar.dt,CtrlVar.dtRatio]=AdaptiveTimeStepping(UserVar,RunInfo,CtrlVar,MUA,F);
-        [RunInfo,CtrlVar.dt,CtrlVar.dtRatio]=AdaptiveTimeStepping(RunInfo,CtrlVar,CtrlVar.time,CtrlVar.dt);
+        [RunInfo,CtrlVar.dt,CtrlVar.dtRatio]=AdaptiveTimeStepping(UserVar,RunInfo,CtrlVar,MUA,F);
+        %% Use old AdaptiveTimeStepping algorithm in UaMITgcm
+        %[RunInfo,CtrlVar.dt,CtrlVar.dtRatio]=AdaptiveTimeStepping(RunInfo,CtrlVar,CtrlVar.time,CtrlVar.dt);
     end
     
     
     %% [------------------adapt mesh    adaptive meshing,  adapt mesh, adapt-mesh
     if CtrlVar.AdaptMesh || CtrlVar.FEmeshAdvanceRetreat || CtrlVar.ManuallyDeactivateElements
         
-        
         [UserVar,RunInfo,MUA,BCs,F,l]=AdaptMesh(UserVar,RunInfo,CtrlVar,MUA,BCs,F,l,Ruv,Lubvb);
         CtrlVar.AdaptMeshInitial=0;
- %       fprintf('AdaptMesh #s=%i #b=%i #S=%i #B=%i #h=%i #GF.node=%i \n ',numel(F.s),numel(F.b),numel(F.S),numel(F.B),numel(F.h),numel(F.GF.node))
+        F.x=MUA.coordinates(:,1) ;  F.y=MUA.coordinates(:,2) ; 
         
         if MUA.Nele==0
             fprintf('FE mesh is empty \n ')
@@ -423,7 +420,17 @@ while 1
         if CtrlVar.doplots  && CtrlVar.PlotMesh
             figMesh=FindOrCreateFigure("Mesh");
             clf(figMesh) ; PlotMuaMesh(CtrlVar,MUA); hold on
-            [xGL,yGL]=PlotGroundingLines(CtrlVar,MUA,F.GF,[],[],[],'r'); hold off
+            [xGL,yGL]=PlotGroundingLines(CtrlVar,MUA,F.GF,[],[],[],'r','LineWidth',2);
+            if ~isempty(xGL)
+                Temp=figMesh.CurrentAxes.Title.String;
+                figMesh.CurrentAxes.Title.String=[Temp(:)',{'Grounding line in red'}];
+            end
+            if ~isempty(F.LSF) && CtrlVar.LevelSetMethod    % Level Set  
+                hold on ; [xc,yc]=PlotCalvingFronts(CtrlVar,MUA,F,'b','LineWidth',2) ;
+                 Temp=figMesh.CurrentAxes.Title.String;
+                figMesh.CurrentAxes.Title.String=[Temp(:)',{'Level set zero line in blue'}];
+            end
+            hold off
         end
 
         
@@ -441,67 +448,74 @@ while 1
     
     %% -------------------------------------------------------------------------------------------]
     
-    %% [----------------------- Changes to F required at each RunStep
+    %% [----------------------- Changes to F required at each RunStep external to the solver
+    
+    % There are questions as to which field should be updated manually first.
+    % Geometry modifications might depend on the level-set, so call GetCalving before
+    % GetGeometryAndDensities.
+    
+ 
+    [UserVar,F]=GetSlipperyDistribution(UserVar,CtrlVar,MUA,F);
+    [UserVar,F]=GetAGlenDistribution(UserVar,CtrlVar,MUA,F);
+    
+   % if CtrlVar.LevelSetMethod % Level Set
+   %    [RunInfo,CtrlVar,F]=ModifyThicknessBasedOnLevelSet(RunInfo,CtrlVar,MUA,F) ; % Level Set  
+   % end
     
     if ~CtrlVar.doInverseStep
         if CtrlVar.TimeDependentRun
-            hOld=F.h;
             [UserVar,F]=GetGeometryAndDensities(UserVar,CtrlVar,MUA,F,CtrlVar.GeometricalVarsDefinedEachTransienRunStepByDefineGeometry);
-            
-            % Was geometry manually changed by the user? If so then enforce a new uv
-            % solution
-            dh=norm(hOld-F.h)/sqrt(numel(hOld));
-            
-            if dh>1000*eps 
-                [UserVar,RunInfo,F,l,Kuv,Ruv,Lubvb]= uv(UserVar,RunInfo,CtrlVar,MUA,BCs,F,l);
-                Fm1=F;
-                CtrlVar.ExplicitEstimation=false;
-            else
-                CtrlVar.ExplicitEstimation=true;
-            end
         else
             [UserVar,F]=GetGeometryAndDensities(UserVar,CtrlVar,MUA,F,CtrlVar.GeometricalVarsDefinedEachDiagnosticRunStepByDefineGeometry);
         end
     end
-    
-    
-
-    [UserVar,F]=GetSlipperyDistribution(UserVar,CtrlVar,MUA,F);
-    [UserVar,F]=GetAGlenDistribution(UserVar,CtrlVar,MUA,F);
 
     if CtrlVar.UpdateBoundaryConditionsAtEachTimeStep
         [UserVar,BCs]=GetBoundaryConditions(UserVar,CtrlVar,MUA,BCs,F);
         F=StartVelocity(CtrlVar,MUA,BCs,F);  % start velocity might be a function of GF
     end
  
-    
+    % get mass-balance after any modifications to geometry, as mass balance might depent
+    % on geometry. 
     [UserVar,F]=GetMassBalance(UserVar,CtrlVar,MUA,F);
     
+    
+ 
     %%  -------------------------------------------------------------------------------------]
     
     
-    if ~CtrlVar.TimeDependentRun % Time independent run.  Solving for velocities for a given geometry (diagnostic steo).
+    if ~CtrlVar.TimeDependentRun % Time independent run.  Solving for velocities for a given geometry (diagnostic step).
         
         %% Diagnostic calculation (uv)
         if CtrlVar.InfoLevel >= 1 ; fprintf(CtrlVar.fidlog,' ==> Time independent step. Current run step: %i \n',CtrlVar.CurrentRunStepNumber) ;  end
         
-        RunInfo.Message="Diagnostic step. Solving for velocities.";
+        RunInfo.Message="-RunStepLoop- Diagnostic step. Solving for velocities.";
         CtrlVar.RunInfoMessage=RunInfo.Message;
         
         [UserVar,RunInfo,F,l,Kuv,Ruv,Lubvb]= uv(UserVar,RunInfo,CtrlVar,MUA,BCs,F,l);
         
+    end  % ~CtrlVar.TimeDependentRun
+    
+    if CtrlVar.TimeDependentRun
         
-    else   % Time-dependent run
         
         %        0  : values at t      This is F0
         %        1  : values at t+dt   This is F.
         %       at start, F is explicit guess for values at t+dt
         %       an end,   F are converged values at t+dt
         
+        % RunInfo
+        
+    
+        
+        % RunInfo.Forward.iCounter=RunInfo.Forward.iCounter+1;
+        RunInfo.Forward.time(CtrlVar.CurrentRunStepNumber)=CtrlVar.time;
+        RunInfo.Forward.dt(CtrlVar.CurrentRunStepNumber)=CtrlVar.dt;
+        
         if CtrlVar.Implicituvh % Fully implicit time-dependent step (uvh)
             
             
-            RunInfo.Message="Time dependent step. Solving implicitly for velocities and thickness.";
+            RunInfo.Message="-RunStepLoop- Time dependent step. Solving implicitly for velocities and thickness.";
             CtrlVar.RunInfoMessage=RunInfo.Message;
             
             
@@ -514,12 +528,11 @@ while 1
                 
                 RunInfo.CPU.Total=duration(0,0,cputime);
                 RunInfo.CPU.WallTime=duration(0,0,toc(WallTime0));
-                
                 fprintf(RunInfo.File.fid,...
                     '  t-dt-tCPU-it-itTotal-date-uvhAssembly-uvhSolution-WallTime , %g , %g , %s  ,  %i , %i , %s , %s , %s , %s \n',...
-                    CtrlVar.time,CtrlVar.dt,RunInfo.CPU.Total,RunInfo.Forward.Iterations,RunInfo.Forward.IterationsTotal,datetime('now'),...
+                    CtrlVar.time,CtrlVar.dt,RunInfo.CPU.Total,RunInfo.Forward.uvhIterations(CtrlVar.CurrentRunStepNumber),...
+                    RunInfo.Forward.IterationsTotal,datetime('now'),...
                     duration(0,0,RunInfo.CPU.Assembly.uvh),duration(0,0,RunInfo.CPU.Solution.uvh),RunInfo.CPU.WallTime);
-                
             end
             
             
@@ -534,63 +547,69 @@ while 1
                 
                 %ub0=ub ; ud0=ud ; vb0=vb ; vd0=vd;
                 
-                
-%                 if (ReminderFraction(CtrlVar.time,CtrlVar.UaOutputsDt)<1e-5 || CtrlVar.UaOutputsDt==0 )
-%                     CtrlVar.UaOutputsInfostring='Diagnostic step';
-%                     CtrlVar.UaOutputsCounter=CtrlVar.UaOutputsCounter+1;
-%                     fprintf(' Calling UaOutputs. UaOutputsInfostring=%s , UaOutputsCounter=%i \n ',CtrlVar.UaOutputsInfostring,CtrlVar.UaOutputsCounter)
+                %% Remove because incompatible with fractional UaOutputs in UaMITgcm
+%                 if (ReminderFraction(CtrlVar.time,CtrlVar.DefineOutputsDt)<1e-5 || CtrlVar.DefineOutputsDt==0 )
+%                     CtrlVar.DefineOutputsInfostring="Diagnostic step";
+%                     CtrlVar.DefineOutputsCounter=CtrlVar.DefineOutputsCounter+1;
+%                     fprintf(' Calling DefineOutputs. DefineOutputsInfostring=%s , DefineOutputsCounter=%i \n ',CtrlVar.DefineOutputsInfostring,CtrlVar.DefineOutputsCounter)
 %                     
-%                     UserVar=CreateUaOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
-%                     if CtrlVar.UaOutputsCounter>=CtrlVar.UaOutputsMaxNrOfCalls
-%                         fprintf(' Exiting because number of calls to UaOutputs (%i) >= CtrlVar.UaOutputsMaxNrOfCalls (%i) /n',...
-%                             CtrlVar.UaOutputsCounter,CtrlVar.UaOutputsMaxNrOfCalls)
+%                     UserVar=CreateOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
+%                     if CtrlVar.DefineOutputsCounter>=CtrlVar.DefineOutputsMaxNrOfCalls
+%                         fprintf(' Exiting because number of calls to DefineOutputs (%i) >= CtrlVar.DefineOutputsMaxNrOfCalls (%i) /n',...
+%                             CtrlVar.DefineOutputsCounter,CtrlVar.DefineOutputsMaxNrOfCalls)
 %                         return
 %                     end
 %                 end
             end
             
-        
+            % Now that the velocity has been calculated, we can ask for the calving parameters
+           [UserVar,F]=GetCalving(UserVar,CtrlVar,MUA,F,BCs);  % Level Set  
             
-            F0=F;  % 
+            F0=F;  %
             
             
             %% get an explicit estimate for u, v and h at the end of the time step
             
             %
             % F0 is the converged solution from the previous time step
-            % F0.dubdt is based on F0 and the previous solution to F0, which is referred to as Fm1, but is not saved 
+            % F0.dubdt is based on F0 and the previous solution to F0, which is referred to as Fm1, but is not saved
             % F0.dubdt=(F0.ub-Fm1.ub)/dt  (where dt is the time step between Fm1 and F0.)
             %
             
-       
-            
-            if CtrlVar.ExplicitEstimation
-                [UserVar,RunInfo,F.ub,F.vb,F.ud,F.vd,F.h]=ExplicitEstimationForUaFields(UserVar,RunInfo,CtrlVar,MUA,F0,Fm1,BCs,l,BCs,l);
-            end
-            
-            
+            [UserVar,RunInfo,F.ub,F.vb,F.ud,F.vd,F.h]=ExplicitEstimationForUaFields(UserVar,RunInfo,CtrlVar,MUA,F0,Fm1,BCs,l,BCs,l);
+
             
             %% advance the solution by dt using a fully implicit method with respect to u,v and h
             
             
             
             CtrlVar.time=CtrlVar.time+CtrlVar.dt;        % I here need the mass balance at the end of the time step, hence must increase t
+            F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ; 
             [UserVar,F]=GetMassBalance(UserVar,CtrlVar,MUA,F);
             CtrlVar.time=CtrlVar.time-CtrlVar.dt; % and then take it back to t at the beginning.
+            F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ; 
             
-            % uvh implicit step
+            % uvh implicit step  (The F on input is based on an explicit estimate, on
+            % return I have the implicit estimate. The explicit estimate is only there to
+            % speed up the non-linear solver.
             [UserVar,RunInfo,F,l,BCs,dt]=uvh(UserVar,RunInfo,CtrlVar,MUA,F0,F,l,l,BCs);
             
             CtrlVar.dt=dt;  % I might have changed dt within uvh
             
             if ~RunInfo.Forward.Converged
                 
+                warning("Ua2D:WTSHTF","uvh did not converge")
+                filename="DumpWTSHTD.mat";
+                fprintf("Ua2D:Saving all variables in %s \n",filename)
+                save(filename) 
+                fprintf("Ua2D:calling WTSHTF\n")
                 [UserVar,RunInfo,F,F0,l,Kuv,Ruv,Lubvb]= WTSHTF(UserVar,RunInfo,CtrlVar,MUA,BCs,F0,Fm1,l);
-
+                
             end
             
+
             CtrlVar.time=CtrlVar.time+CtrlVar.dt;
-            
+            F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ; 
             % Recalulating geometry based on floation not really needed here because uvh
             % does this implicitly.
             [F.b,F.s,F.h,F.GF]=Calc_bs_From_hBS(CtrlVar,MUA,F.h,F.S,F.B,F.rho,F.rhow);
@@ -600,24 +619,31 @@ while 1
         elseif ~CtrlVar.Implicituvh % Semi-implicit time-dependent step. Implicit with respect to h, explicit with respect to u and v.
             
             
-            RunInfo.Message="Time dependent step. Solving explicitly for velocities and implicitly for thickness.";
+            RunInfo.Message="-RunStepLoop- Time dependent step. Solving explicitly for velocities and implicitly for thickness.";
             CtrlVar.RunInfoMessage=RunInfo.Message;
             
-            
+
             fprintf(...
                 '\n =========> Semi-Implicit uvh going from t=%-.10g to t=%-.10g with dt=%-g. Done %-g %% of total time, and  %-g %% of steps. (%s) \n ',...
                 CtrlVar.time,CtrlVar.time+CtrlVar.dt,CtrlVar.dt,100*CtrlVar.time/CtrlVar.TotalTime,...
                 100*(CtrlVar.CurrentRunStepNumber-1-CtrlVar.CurrentRunStepNumber0)/CtrlVar.TotalNumberOfForwardRunSteps,datetime('now'));
-            
+
             tSemiImplicit=tic;                  % -uv
-            
-            
+
+
             F0=F;
-            
+
+            CtrlVar.time=CtrlVar.time+CtrlVar.dt;        % I here need the mass balance at the end of the time step, hence must increase t
+            F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ;
+            [UserVar,F]=GetMassBalance(UserVar,CtrlVar,MUA,F);
+            CtrlVar.time=CtrlVar.time-CtrlVar.dt; % and then take it back to t at the beginning.
+            F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ;
+
+
             [UserVar,RunInfo,F,F0,l,Kuv,Ruv,Lubvb]= uvhSemiImplicit(UserVar,RunInfo,CtrlVar,MUA,BCs,F0,Fm1,l);
-            CtrlVar.time=CtrlVar.time+CtrlVar.dt;
+            CtrlVar.time=CtrlVar.time+CtrlVar.dt; F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ;
             [F,Fm1]=UpdateFtimeDerivatives(UserVar,RunInfo,CtrlVar,MUA,F,F0);
-            
+
             
             tSemiImplicit=toc(tSemiImplicit);
             if CtrlVar.InfoLevelCPU>=1
@@ -625,38 +651,47 @@ while 1
             end
             
         end
-    end
+        
+        % update Level Set to current time using the new velocities
+        if CtrlVar.LevelSetMethod
+            [UserVar,RunInfo,F.LSF,F.LSFMask,LSFlambda,F.LSFqx,F.LSFqy]=LevelSetEquation(UserVar,RunInfo,CtrlVar,MUA,BCs,F0,F);  % Level Set
+        end
+    end   % CtrlVar.TimeDependentRun
     
-    %% calculations for this step are now done, only some plotting/writing issues do deal with
-    
-    % calculating derived quantities
-    
-    %GF = GL2d(F.B,F.S,F.h,F.rhow,F.rho,MUA.connectivity,CtrlVar);
+    %% calculations for this rund step are now done, only some plotting/writing issues do deal with
+
+
     
   
     %% plotting results
     
-    % UaOutputs
+    % DefineOutputs
     
-    if (ReminderFraction(CtrlVar.time,CtrlVar.UaOutputsDt(CtrlVar.UaOutputsCounter+1))<1e-5)
-        CtrlVar.UaOutputsInfostring='inside transient loop and inside run-step loop';
-        CtrlVar.UaOutputsCounter=CtrlVar.UaOutputsCounter+1;
+    %if (ReminderFraction(CtrlVar.time,CtrlVar.DefineOutputsDt) < (CtrlVar.dt/(10*CtrlVar.DefineOutputsDt))) || CtrlVar.DefineOutputsDt==0 
+    %% Adjust to accomodate fractional UaOutputs in UaMITgcm
+    if (ReminderFraction(CtrlVar.time,CtrlVar.DefineOutputsDt(CtrlVar.DefineOutputsCounter+1))<1e-5)
+    
+        %(ReminderFraction(CtrlVar.time,CtrlVar.DefineOutputsDt)<1e-5 || CtrlVar.DefineOutputsDt==0 )
+        CtrlVar.DefineOutputsInfostring="inside transient loop and inside run-step loop";
+        CtrlVar.DefineOutputsCounter=CtrlVar.DefineOutputsCounter+1;
         
         if CtrlVar.MassBalanceGeometryFeedback>0
             CtrlVar.time=CtrlVar.time+CtrlVar.dt;  % I here need the mass balance at the end of the time step, hence must increase t
+            F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ; 
             [UserVar,F]=GetMassBalance(UserVar,CtrlVar,MUA,F);
             CtrlVar.time=CtrlVar.time-CtrlVar.dt; % and then take it back to t at the beginning. 
+            F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ; 
             %[UserVar,as,ab,dasdh,dabdh]=GetMassBalance(UserVar,CtrlVar,MUA,CtrlVar.time+CtrlVar.dt,s,b,h,S,B,rho,rhow,GF);
         end
         
-        fprintf(' Calling UaOutputs. UaOutputsInfostring=%s , UaOutputsCounter=%i \n ',CtrlVar.UaOutputsInfostring,CtrlVar.UaOutputsCounter)
+        fprintf(' Calling DefineOutputs. DefineOutputsInfostring=%s , DefineOutputsCounter=%i \n ',CtrlVar.DefineOutputsInfostring,CtrlVar.DefineOutputsCounter)
         
-        UserVar=CreateUaOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
-        %UserVar=CreateUaOutputs(UserVar,CtrlVar,MUA,s,b,S,B,h,ub,vb,ud,vd,uo,vo,dhdt,dsdt,dbdt,C,AGlen,m,n,rho,rhow,g,as,ab,dasdh,dabdh,GF,BCs,l);
+        UserVar=CreateOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
         
-        if CtrlVar.UaOutputsCounter>=CtrlVar.UaOutputsMaxNrOfCalls
-            fprintf(' Exiting because number of calls to UaOutputs (%i) >= CtrlVar.UaOutputsMaxNrOfCalls (%i) /n',...
-                CtrlVar.UaOutputsCounter,CtrlVar.UaOutputsMaxNrOfCalls)
+        
+        if CtrlVar.DefineOutputsCounter>=CtrlVar.DefineOutputsMaxNrOfCalls
+            fprintf(' Exiting because number of calls to DefineOutputs (%i) >= CtrlVar.DefineOutputsMaxNrOfCalls (%i) /n',...
+                CtrlVar.DefineOutputsCounter,CtrlVar.DefineOutputsMaxNrOfCalls)
             return
         end
     end
@@ -681,30 +716,32 @@ if CtrlVar.PlotWaitBar
 end
 
 
-%% plotting results
+%% Final call to DefineOutputs
 
-%[etaInt,xint,yint,exx,eyy,exy,Eint,e,txx,tyy,txy]=calcStrainRatesEtaInt(CtrlVar,MUA,ub,vb,AGlen,n);
-%[wSurf,wSurfInt,wBedInt,wBed]=calcVerticalSurfaceVelocity(rho,rhow,h,S,B,b,ub,vb,as,ab,exx,eyy,xint,yint,MUA.coordinates,MUA.connectivity,MUA.nip,CtrlVar);
 
-if (ReminderFraction(CtrlVar.time,CtrlVar.UaOutputsDt(CtrlVar.UaOutputsCounter))<1e-5)
-    CtrlVar.UaOutputsInfostring='Last call';
-%    CtrlVar.UaOutputsCounter=CtrlVar.UaOutputsCounter+1;
+%if (ReminderFraction(CtrlVar.time,CtrlVar.DefineOutputsDt)<1e-5 || CtrlVar.DefineOutputsDt==0 )
+%% Adjust to make compatible with fractional UaOutputs in UaMITgcm
+if (ReminderFraction(CtrlVar.time,CtrlVar.DefineOutputsDt(CtrlVar.DefineOutputsCounter))<1e-5)
+    CtrlVar.DefineOutputsInfostring="Last call";
+%    CtrlVar.DefineOutputsCounter=CtrlVar.DefineOutputsCounter+1;
     if CtrlVar.MassBalanceGeometryFeedback>0
-        CtrlVar.time=CtrlVar.time+CtrlVar.dt;
+        CtrlVar.time=CtrlVar.time+CtrlVar.dt; F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ; 
         [UserVar,F]=GetMassBalance(UserVar,CtrlVar,MUA,F);
-        CtrlVar.time=CtrlVar.time-CtrlVar.dt;
+        CtrlVar.time=CtrlVar.time-CtrlVar.dt; F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ; 
         %[UserVar,as,ab,dasdh,dabdh]=GetMassBalance(UserVar,CtrlVar,MUA,CtrlVar.time+CtrlVar.dt,s,b,h,S,B,rho,rhow,GF);
     end
     
-    fprintf(' Calling UaOutputs. UaOutputsInfostring=%s , UaOutputsCounter=%i \n ',CtrlVar.UaOutputsInfostring,CtrlVar.UaOutputsCounter)
-    UserVar=CreateUaOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
-    %UserVar=CreateUaOutputs(UserVar,CtrlVar,MUA,s,b,S,B,h,ub,vb,ud,vd,uo,vo,dhdt,dsdt,dbdt,C,AGlen,m,n,rho,rhow,g,as,ab,dasdh,dabdh,GF,BCs,l);
-    if CtrlVar.UaOutputsCounter>=CtrlVar.UaOutputsMaxNrOfCalls
-        fprintf(' Exiting because number of calls to UaOutputs (%i) >= CtrlVar.UaOutputsMaxNrOfCalls (%i) /n',...
-            CtrlVar.UaOutputsCounter,CtrlVar.UaOutputsMaxNrOfCalls)
+    fprintf(' Calling DefineOutputs. DefineOutputsInfostring=%s , DefineOutputsCounter=%i \n ',CtrlVar.DefineOutputsInfostring,CtrlVar.DefineOutputsCounter)
+    UserVar=CreateOutputs(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
+    
+    if CtrlVar.DefineOutputsCounter>=CtrlVar.DefineOutputsMaxNrOfCalls
+        fprintf(' Exiting because number of calls to DefineOutputs (%i) >= CtrlVar.DefineOutputsMaxNrOfCalls (%i) /n',...
+            CtrlVar.DefineOutputsCounter,CtrlVar.DefineOutputsMaxNrOfCalls)
         return
     end
 end
+
+
 
 %% saving outputs
 
@@ -720,7 +757,8 @@ fprintf(CtrlVar.fidlog,' Wall-clock time : %s (hh:mm:ss) \n',RunInfo.CPU.WallTim
 
 if CtrlVar.fidlog~= 1 ; fclose(CtrlVar.fidlog); end
 
-fclose(RunInfo.File.fid);
+
+%UserVar=DefineFinalReturnedValueOfUserVar(UserVar,CtrlVar,MUA,BCs,F,l,InvStartValues,InvFinalValues,Priors,Meas,BCsAdjoint,RunInfo);
 
 SayGoodbye(CtrlVar,RunInfo);
 

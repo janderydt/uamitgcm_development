@@ -18,13 +18,12 @@ if any(arrayfun(@(x) isequal(x.name,'F'),Contents))
     
     try
         
-        load(CtrlVar.NameOfRestartFiletoRead,'CtrlVarInRestartFile','MUA','BCs','RunInfo','time','dt','F','GF','l');
+        load(CtrlVar.NameOfRestartFiletoRead,'CtrlVarInRestartFile','MUA','BCs','RunInfo','F','l');
         
 %        MUAold=MUA;
 %        MUA=UpdateMUA(CtrlVar,MUA);
-        
+
     catch exception
-        
         fprintf(CtrlVar.fidlog,'%s \n',exception.message);
         error('could not load restart file %s',CtrlVar.NameOfRestartFiletoRead)
     end
@@ -53,10 +52,14 @@ else
     
 end
 
+F.time=CtrlVar.time ; F.dt=CtrlVar.dt ; 
+
 
 RunInfo=UaRunInfo;
 RunInfo.File.Name=CtrlVar.Experiment+"-RunInfo.txt";
-RunInfo.File.fid = fopen(RunInfo.File.Name,'a');
+if CtrlVar.WriteRunInfoFile
+    RunInfo.File.fid = fopen(RunInfo.File.Name,'a');
+end
 
 if exist('BCs','var')==0
     fprintf(' The variable BCs not found in restart file. Reset. \n')
@@ -80,15 +83,54 @@ if ~isobject(RunInfo)
    RunInfo=UaRunInfo; 
 end
 
+% if ~isfield(RunInfo,'Mapping') || isempty(RunInfo.Mapping)
+%     RunInfo.Mapping.nNewNodes=NaN;
+%     RunInfo.Mapping.nOldNodes=NaN;
+%     RunInfo.Mapping.nIdenticalNodes=NaN;
+%     RunInfo.Mapping.nNotIdenticalNodes=NaN;
+%     RunInfo.Mapping.nNotIdenticalNodesOutside=NaN;
+%     RunInfo.Mapping.nNotIdenticalNodesInside=NaN;
+% end
+
+% nRunInfo=numel(RunInfo.Forward.time) ; 
+% if nRunInfo < CtrlVarInRestartFile.CurrentRunStepNumber
+%     nRunInfo = CtrlVarInRestartFile.CurrentRunStepNumber+1000 ;
+%     RunInfo.Forward.time=NaN(nRunInfo,1); 
+%     RunInfo.Forward.dt=NaN(nRunInfo,1) ;
+%     RunInfo.Forward.uvhIterations=NaN(nRunInfo,1) ;
+%     RunInfo.Forward.uvhResidual=NaN(nRunInfo,1) ; 
+%     RunInfo.Forward.uvhBackTrackSteps=NaN(nRunInfo,1) ;
+%     RunInfo.Forward.uvhActiveSetIterations=NaN(nRunInfo,1) ;
+%     RunInfo.Forward.uvhActiveSetCyclical=NaN(nRunInfo,1) ;
+%     RunInfo.Forward.uvhActiveSetConstraints=NaN(nRunInfo,1) ;
+%     
+% end
+
+
+
+
+
+
+
+
+
+
 if CtrlVar.ResetTime==1
     CtrlVarInRestartFile.time=CtrlVar.RestartTime;
     fprintf(CtrlVar.fidlog,' Time reset to CtrlVar.RestartTime=%-g \n',CtrlVarInRestartFile.time);
 end
 
+
+
+
+
+
 if CtrlVar.ResetTimeStep==1
     CtrlVarInRestartFile.dt=CtrlVar.dt;
     fprintf(CtrlVar.fidlog,' Time-step reset to CtrlVar.dt=%-g \n',CtrlVarInRestartFile.dt);
 end
+
+
 
 if CtrlVar.ResetRunStepNumber
     CtrlVarInRestartFile.CurrentRunStepNumber=0;
@@ -100,6 +142,7 @@ CtrlVar.RestartTime=CtrlVarInRestartFile.time;
 CtrlVar.dt=CtrlVarInRestartFile.dt;
 CtrlVar.CurrentRunStepNumber=CtrlVarInRestartFile.CurrentRunStepNumber;
 
+F.time=CtrlVar.time ;  F.dt=CtrlVar.dt ; 
 
 fprintf(CtrlVar.fidlog,' Starting restart run at t=%-g with dt=%-g \n',...
     CtrlVarInRestartFile.time,CtrlVarInRestartFile.dt);
@@ -147,7 +190,9 @@ isMeshChanged=HasMeshChanged(MUA,MUAold);
 if isMeshChanged
     
     fprintf(CtrlVar.fidlog,' Grid changed, all variables mapped from old to new grid \n ');
-    [UserVar,RunInfo,F,BCs,GF,l]=MapFbetweenMeshes(UserVar,RunInfo,CtrlVar,MUAold,MUA,F,BCs,GF,l);
+    
+    
+    [UserVar,RunInfo,F,BCs,l]=MapFbetweenMeshes(UserVar,RunInfo,CtrlVar,MUAold,MUA,F,BCs,l);
     %[UserVar,RunInfo,F,BCs,GF]=MapFbetweenMeshes(UserVar,RunInfo,CtrlVar,MUAold,MUA,F,BCs,GF);
     
     
@@ -157,7 +202,7 @@ else
         
         % if time dependent then surface (s) and bed (b) are defined by mapping old thickness onto
         % [UserVar,~,~,F.S,F.B,F.alpha]=GetGeometry(UserVar,CtrlVar,MUA,CtrlVar.time,'SB');
-        [UserVar,F]=GetGeometryAndDensities(UserVar,CtrlVar,MUA,F,'SB');
+        [UserVar,F]=GetGeometryAndDensities(UserVar,CtrlVar,MUA,F,'-S-B-');
         
         l=UaLagrangeVariables;
         
@@ -168,8 +213,8 @@ else
         fprintf('When mapping quantities from an old to a new mesh, all geometrical variables (s, b, S, and B) of the new mesh \n')
         fprintf('are therefore obtained through a call to DefineGeometry.m and not through interpolation from the old mesh.\n')
         
-        %[UserVar,F.s,F.b,F.S,F.B,F.alpha]=GetGeometry(UserVar,CtrlVar,MUA,CtrlVar.time,'sbSB');
-        [UserVar,F]=GetGeometryAndDensities(UserVar,CtrlVar,MUA,F,'sbSB');
+        
+        [UserVar,F]=GetGeometryAndDensities(UserVar,CtrlVar,MUA,F,'-s-b-S-B-rho-rhow-g');
         TestVariablesReturnedByDefineGeometryForErrors(MUA,F.s,F.b,F.S,F.B);
         %F.h=F.s-F.b;
         
@@ -180,7 +225,7 @@ end
 
 fprintf(' Note: Even though this is a restart run the following variables are defined at the beginning of the run\n')
 fprintf('       through calls to corresponding user-input files: rho, rhow, g, C, m, AGlen, n, as, and ab.\n')
-fprintf('       These will owerwrite those in restart file.\n')
+fprintf('       These will overwrite those in restart file.\n')
 
 
 %[UserVar,F]=GetDensities(UserVar,CtrlVar,MUA,F);
@@ -200,7 +245,9 @@ end
 
 if CtrlVar.doplots==1 && CtrlVar.PlotBCs==1
     
-    figure
+    fig=FindOrCreateFigure("Boundary Conditions");
+    clf(fig) 
+    hold off
     PlotBoundaryConditions(CtrlVar,MUA,BCs);
     
 end

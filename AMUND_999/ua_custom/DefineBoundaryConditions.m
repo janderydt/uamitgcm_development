@@ -5,8 +5,10 @@ persistent AA BB
 if isempty(AA)
   
     % load points that define the line-segments along which the BCs are to be defined
-    load FixedBoundaryPoints xOuter yOuter
-    AA=[xOuter(1:end-1) yOuter(1:end-1)] ; BB=[xOuter(2:end) yOuter(2:end)];
+    load AMUND_FixedBoundaryPoints_Bedmachinev2.mat
+    xfixed = FixedBoundaryCoordinates(:,1);
+    yfixed = FixedBoundaryCoordinates(:,2);
+    AA=[xfixed(1:end-1) yfixed(1:end-1)] ; BB=[xfixed(2:end) yfixed(2:end)];
 
 end
 
@@ -16,10 +18,9 @@ I = DistanceToLineSegment([x(MUA.Boundary.Nodes) y(MUA.Boundary.Nodes)],AA,BB,to
 
 BCs.vbFixedNode=MUA.Boundary.Nodes(I);
 BCs.ubFixedNode=MUA.Boundary.Nodes(I);
-%BCs.vbFixedNode=MUA.Boundary.Nodes(I);
-%BCs.ubFixedNode=MUA.Boundary.Nodes(I);
 
 BCs.ubFixedValue=BCs.ubFixedNode*0;
 BCs.vbFixedValue=BCs.vbFixedNode*0;
+
 
 end

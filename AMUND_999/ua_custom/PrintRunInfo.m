@@ -2,7 +2,7 @@
 function PrintRunInfo(CtrlVar)
 
 fprintf(CtrlVar.fidlog,'\n \n');
-fprintf(CtrlVar.fidlog,' **************************     Úa version: 22 November 2018  ********************** \n');
+fprintf(CtrlVar.fidlog,' **************************     Úa version: 1 November 2021 (master)  ********************** \n');
 fprintf(CtrlVar.fidlog,'    Run starts at %s  \n ',datestr(now));
 fprintf(CtrlVar.fidlog,'   Experiment: %s  \n ',CtrlVar.Experiment);
 
@@ -13,7 +13,9 @@ if CtrlVar.doInverseStep
         fprintf(CtrlVar.fidlog,'   Inverse-modelling run.  \n ');
     end
     
+    fprintf('\tCtrlVar.Inverse.MinimisationMethod=''%s''\n' ,CtrlVar.Inverse.MinimisationMethod)
     fprintf('\tCtrlVar.Inverse.InvertFor=''%s''\n',CtrlVar.Inverse.InvertFor)
+    fprintf('\tCtrlVar.Inverse.Measurements=''%s''\n',CtrlVar.Inverse.Measurements)
     fprintf('\tCtrlVar.Inverse.Regularize.Field=''%s''\n',CtrlVar.Inverse.Regularize.Field)
     fprintf('\tCtrlVar.Inverse.DataMisfit.GradientCalculation=''%s''\n',CtrlVar.Inverse.DataMisfit.GradientCalculation)
     
@@ -38,10 +40,10 @@ if  CtrlVar.doPrognostic
 end
 
 
-%[status,hostname]=system('hostname');
-%if status==0
-%    fprintf('   Running on: %s ',hostname)
-%end
+% [status,hostname]=system('hostname');
+% if  status==0
+%     fprintf('   Running on: %s ',hostname)
+% end
 
 fprintf(CtrlVar.fidlog,'***************************************************************************** \n \n');
 
