@@ -177,8 +177,7 @@ IceShelfNodes = OpenOceanIceShelfNodes; IceShelfNodes(OpenOceanNodes==1)=0;
 Mask_tmp(IceShelfNodes==1) = 1;
 
 %% Reduce size of mask back to MIT grid size by averaging over elements
-Mask_tmp2 = (Mask_tmp(1:end-1,1:end-1)+Mask_tmp(2:end,1:end-1)+Mask_tmp(1:end-1,2:end)+Mask_tmp(2:end,2:end))/4;
-Mask_tmp = []; Mask_tmp = Mask_tmp2;
+Mask_tmp = (Mask_tmp(1:end-1,1:end-1)+Mask_tmp(2:end,1:end-1)+Mask_tmp(1:end-1,2:end)+Mask_tmp(2:end,2:end))/4;
 
 %% Now do some cleaning up:
 % check that for ice shelf elements, at least 1 corner is afloat
