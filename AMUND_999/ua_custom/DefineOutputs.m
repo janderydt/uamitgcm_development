@@ -48,25 +48,28 @@ latEMIT = [UserVar.UaMITgcm.MITgcmGGridlat(1,:) 2*latCMIT(1,end)-UserVar.UaMITgc
 % sophisticated methods can be implemented, such as 'data binning'. If the 
 % MITgcm tracer points are a subset of the Ua nodes then interpolation is 
 % not required. 
+
 % first, close up lakes upstream of the main GL
 [~,OceanNodes] = LakeOrOcean3(CtrlVar,MUA,GF);
 F.b(~OceanNodes) = F.B(~OceanNodes);
+
 % now interpolate onto MIT grid
-FB = scatteredInterpolant(x,y,F.B,'linear');
+FB = scatteredInterpolant(MUA.coordinates(:,1),MUA.coodinates(:,2),F.B,'linear');
 B_forMITgcm = FB(UserVar.UaMITgcm.MITgcmCGridX(:),UserVar.UaMITgcm.MITgcmCGridY(:));
-% For MITgcm tracer points outside Ua domain replace via DefineGeometry
+
+% for MITgcm tracer points outside Ua domain replace with Bedmachine data via DefineGeometry
 I_outsideUa = find(~inpoly([UserVar.UaMITgcm.MITgcmCGridX(:),UserVar.UaMITgcm.MITgcmCGridY(:)],[MUA.Boundary.x(:),MUA.Boundary.y(:)]));
 MITmesh.coordinates = [UserVar.UaMITgcm.MITgcmCGridX(I_outsideUa) UserVar.UaMITgcm.MITgcmCGridY(I_outsideUa)];
 [~,~,~,~,B_forMITgcm(I_outsideUa),~]=DefineGeometry(UserVar,CtrlVar,MITmesh,[],'B');
 
-Fb = scatteredInterpolant(x,y,F.b,'linear');
+Fb = scatteredInterpolant(MUA.coordinates(:,2),MUA.coordinates(:,2),F.b,'linear');
 b_forMITgcm = Fb(UserVar.UaMITgcm.MITgcmCGridX(:),UserVar.UaMITgcm.MITgcmCGridY(:));
 b_forMITgcm(I_outsideUa) = 0;
 
 %% Generate mask for MITgcm: 
 
-% generate triangulation of MITgcm cells. Nodes of triangulation correspond
-% to corners of MITgcm cells
+% Generate triangulation of MITgcm cells. Edges of triangulation correspond
+% to edges of MITgcm cells
 MITgcm_connectivity = delaunay(lonEMIT(:),latEMIT(:));
 
 %% First identify open ocean cells
@@ -77,7 +80,7 @@ Mask_tmp(I_edgenodesoutsideUa) = 0;
 % for graph, only retain MITgcm elements that completely fall outside Ua domain boundary
 Mask_ele = sum(Mask_tmp(MITgcm_connectivity),2);
 TRI = MITgcm_connectivity(find(Mask_ele==0),:);
-% elements crossing the ice front:
+% elements crossing the ice front for later:
 Iele_crossingicefront = find(Mask_ele>0 & Mask_ele<3);
 
 % create undirected graph
@@ -86,6 +89,7 @@ G = graph(TRI,TRI(:,[2 3 1]));
 bins=conncomp(G) ;
 
 % define indices of OceanBoundaryNodes at northern boundary for flooding
+% === This is specific to the AMUND setup ===
 OceanBoundaryNodes = find(latEMIT == max(latEMIT(:)));
 
 % initialise arrays
@@ -94,8 +98,8 @@ OpenOceanNodes = zeros((nx+1)*(ny+1),1);
 Nnum(OceanBoundaryNodes) = 1;
 
 % loop through ocean boundary nodes until each one has been checked for
-% connected floating nodes, once this is done for all boundary nodes the
-% only floating nodes left should be lakes
+% connected open ocean nodes. Once this is done the only 'open ocean' nodes are
+% nodes outside the Ua domain, and grounded
 while sum(Nnum)>0
     
     NodeSeed = find(Nnum,1,'first');
@@ -119,7 +123,6 @@ end
 % [latGL,lonGL] = psxy2ll(xGL,yGL,-71,0);
 % plot(lonGL,latGL,'-xk');
 
-
 %% Now identify ice shelf nodes
 % temporary mask: 0 for nodes outside Ua domain or with b>B+1, 1 inside remainder of the boundary
 B_elecornernodes = FB(xEMIT,yEMIT);
@@ -130,6 +133,7 @@ Mask_tmp([find(I_edgenodesoutsideUa);find(b_elecornernodes>B_elecornernodes+1)])
 
 % for graph, only retain elements that are not fully grounded
 Mask_ele = sum(Mask_tmp(MITgcm_connectivity),2);
+
 % conservative approach near ice front:
 Iele_fullyfloatingnearIF = intersect(find(Mask_ele==0),Iele_crossingicefront);
 % include all not-fully grounded elements elsewhere
@@ -147,8 +151,7 @@ OpenOceanIceShelfNodes = zeros(nx*ny,1);
 Nnum(OceanBoundaryNodes) = 1;
 
 % loop through ocean boundary nodes until each one has been checked for
-% connected floating nodes, once this is done for all boundary nodes the
-% only floating nodes left should be lakes
+% connected ocean nodes
 while sum(Nnum)>0
     
     NodeSeed = find(Nnum,1,'first');
@@ -163,6 +166,7 @@ while sum(Nnum)>0
     
 end
 
+%% Now we are ready to generate the mask
 %% In UaMITgcm mask convention is:
 % 2 - open ocean
 % 1 - ice shelf
@@ -172,6 +176,7 @@ Mask_tmp(OpenOceanNodes==1) = 2;
 IceShelfNodes = OpenOceanIceShelfNodes; IceShelfNodes(OpenOceanNodes==1)=0;
 Mask_tmp(IceShelfNodes==1) = 1;
 
+%% Reduce size of mask back to MIT grid size by averaging over elements
 Mask_tmp = (Mask_tmp(1:end-1,1:end-1)+Mask_tmp(2:end,1:end-1)+Mask_tmp(1:end-1,2:end)+Mask_tmp(2:end,2:end))/4;
 
 %% Now do some cleaning up:
@@ -192,7 +197,10 @@ for nn=1:numel(I_IS)
     end
 end
 
+%% Elements for which at least one corner node is identified as ice shelf, are masked as ice shelf 
+% This is generous, but guarantees that floating nodes in Ua are (almost) always part of floating elements in MITgcm
 Mask_tmp(Mask_tmp>0 & Mask_tmp<2) = 1;
+
 mask_forMITgcm = Mask_tmp(:);
 B_forMITgcm = B_forMITgcm(:);
 b_forMITgcm = b_forMITgcm(:);
@@ -230,14 +238,13 @@ mask_forMITgcm = reshape(mask_forMITgcm,nx,ny);
 B_forMITgcm = reshape(B_forMITgcm,nx,ny);
 b_forMITgcm = reshape(b_forMITgcm,nx,ny);
 
-figure; hold on;
-
-pcolor(lonEMIT(1:end-1,1:end-1),latEMIT(1:end-1,1:end-1),mask_forMITgcm);
-plot(UaBlon,UaBlat,'-xk');
-CtrlVar.PlotGLs = 0;
-[xGL,yGL,GLgeo]=PlotGroundingLines(CtrlVar,MUA,GF);
-[latGL,lonGL] = psxy2ll(xGL,yGL,-71,0);
-plot(lonGL,latGL,'-xk');
+%figure; hold on;
+%pcolor(lonEMIT(1:end-1,1:end-1),latEMIT(1:end-1,1:end-1),mask_forMITgcm);
+%plot(UaBlon,UaBlat,'-xk');
+%CtrlVar.PlotGLs = 0;
+%[xGL,yGL,GLgeo]=PlotGroundingLines(CtrlVar,MUA,GF);
+%[latGL,lonGL] = psxy2ll(xGL,yGL,-71,0);
+%plot(lonGL,latGL,'-xk');
 
 %% now save B, b and mask
 save([UserVar.UaMITgcm.UaOutputDirectory,'/',UserVar.UaMITgcm.UaDraftFileName],'B_forMITgcm','b_forMITgcm','mask_forMITgcm','-v6');
