@@ -54,7 +54,7 @@ latEMIT = [UserVar.UaMITgcm.MITgcmGGridlat(1,:) 2*latCMIT(1,end)-UserVar.UaMITgc
 F.b(~OceanNodes) = F.B(~OceanNodes);
 
 % now interpolate onto MIT grid
-FB = scatteredInterpolant(MUA.coordinates(:,1),MUA.coodinates(:,2),F.B,'linear');
+FB = scatteredInterpolant(MUA.coordinates(:,1),MUA.coordinates(:,2),F.B,'linear');
 B_forMITgcm = FB(UserVar.UaMITgcm.MITgcmCGridX(:),UserVar.UaMITgcm.MITgcmCGridY(:));
 
 % for MITgcm tracer points outside Ua domain replace with Bedmachine data via DefineGeometry
@@ -62,7 +62,7 @@ I_outsideUa = find(~inpoly([UserVar.UaMITgcm.MITgcmCGridX(:),UserVar.UaMITgcm.MI
 MITmesh.coordinates = [UserVar.UaMITgcm.MITgcmCGridX(I_outsideUa) UserVar.UaMITgcm.MITgcmCGridY(I_outsideUa)];
 [~,~,~,~,B_forMITgcm(I_outsideUa),~]=DefineGeometry(UserVar,CtrlVar,MITmesh,[],'B');
 
-Fb = scatteredInterpolant(MUA.coordinates(:,2),MUA.coordinates(:,2),F.b,'linear');
+Fb = scatteredInterpolant(MUA.coordinates(:,1),MUA.coordinates(:,2),F.b,'linear');
 b_forMITgcm = Fb(UserVar.UaMITgcm.MITgcmCGridX(:),UserVar.UaMITgcm.MITgcmCGridY(:));
 b_forMITgcm(I_outsideUa) = 0;
 
@@ -177,7 +177,8 @@ IceShelfNodes = OpenOceanIceShelfNodes; IceShelfNodes(OpenOceanNodes==1)=0;
 Mask_tmp(IceShelfNodes==1) = 1;
 
 %% Reduce size of mask back to MIT grid size by averaging over elements
-Mask_tmp = (Mask_tmp(1:end-1,1:end-1)+Mask_tmp(2:end,1:end-1)+Mask_tmp(1:end-1,2:end)+Mask_tmp(2:end,2:end))/4;
+Mask_tmp2 = (Mask_tmp(1:end-1,1:end-1)+Mask_tmp(2:end,1:end-1)+Mask_tmp(1:end-1,2:end)+Mask_tmp(2:end,2:end))/4;
+Mask_tmp = []; Mask_tmp = Mask_tmp2;
 
 %% Now do some cleaning up:
 % check that for ice shelf elements, at least 1 corner is afloat
